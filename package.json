@@ -1,0 +1,47 @@
+{
+  "name": "kb-1159",
+  "version": "1.0.0",
+  "bin": {
+    "kb-1159": "bin/kb-1159.js"
+  },
+  "scripts": {
+    "prebuild": "rm -rf dist",
+    "build": "npm run compile && npm run package && npm run synth && npm run upload",
+    "compile": "npm run compile-create-index && npm run compile-web-api && npm run compile-copy-site && npm run compile-data && npm run compile-client",
+    "compile-create-index": "esbuild lambdas/create_index/index.ts --bundle --minify --sourcemap --platform=node --target=es2020 --outfile=dist/create_index.js",
+    "compile-web-api": "esbuild lambdas/web_api/index.ts --bundle --minify --sourcemap --platform=node --target=es2020 --outfile=dist/web_api.js",
+    "compile-copy-site": "esbuild lambdas/copy_site/index.ts --bundle --minify --sourcemap --platform=node --target=es2020 --outfile=dist/copy_site.js",
+    "compile-data": "esbuild lambdas/sample_data/index.ts --bundle --minify --sourcemap --platform=node --target=es2020 --outfile=dist/sample_data.js",
+    "compile-client": "npm run build --prefix client",
+    "package": "npm run package-create-index && npm run package-web-api && npm run package-copy-site && npm run package-data",
+    "package-create-index": "zip -j dist/create_index.zip dist/create_index.js*",
+    "package-web-api": "zip -j dist/web_api.zip dist/web_api.js*",
+    "package-copy-site": "zip -j dist/copy_site.zip dist/copy_site.js*",
+    "package-data": "zip -j dist/sample_data.zip dist/sample_data.js*",
+    "synth": "cdk synth --quiet",
+    "upload": "npm run upload-lambdas && npm run upload-site && npm run upload-iac && npm run upload-data",
+    "upload-iac": "aws s3 cp cdk.out/Kb1159Stack.template.json s3://1159-public-assets/kb-accelerator/$npm_package_version/template.json --profile shared-services",
+    "upload-lambdas": "aws s3 cp dist/ s3://1159-public-assets/kb-accelerator/$npm_package_version/ --recursive --exclude '*' --include '*.zip' --profile shared-services",
+    "upload-site": "aws s3 sync client/dist/spa s3://1159-public-assets/kb-accelerator/$npm_package_version/site/ --exclude '.DS_Store' --profile shared-services",
+    "upload-data": "aws s3 sync sample_data s3://1159-public-assets/kb-accelerator/$npm_package_version/sample_data/ --exclude '.DS_Store' --profile shared-services",
+    "watch": "tsc -w",
+    "test": "jest",
+    "cdk": "cdk"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.142",
+    "@types/jest": "^29.5.12",
+    "@types/node": "20.14.9",
+    "aws-cdk": "2.150.0",
+    "esbuild": "^0.23.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.5",
+    "ts-node": "^10.9.2",
+    "typescript": "~5.5.3"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "2.150.0",
+    "constructs": "^10.0.0",
+    "source-map-support": "^0.5.21"
+  }
+}
