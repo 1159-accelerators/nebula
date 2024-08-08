@@ -158,7 +158,7 @@ watch(authStatus, async (newAuthStatus) => {
 })
 
 const input = ref('');
-const sessionId = ref('');
+const sessionId = ref<string>('');
 const rightDrawerOpen = ref(false);
 const waiting = ref(false);
 
@@ -239,8 +239,11 @@ const messages = ref<Message[]>([]);
 async function addMessage() {
   waiting.value = true
   messages.value.push({ sender: 'me', text: input.value });
+
+  const payload = sessionId.value !== '' ? {question: input.value, sessionId: sessionId.value} : {question: input.value }
+  
   try {
-    const response = await api.post('/chat', {question: input.value, sessionId: sessionId.value}, {headers: {'Authorization': `Bearer ${idToken}`}})
+    const response = await api.post('/chat', payload, {headers: {'Authorization': `Bearer ${idToken}`}})
     messages.value.push({ sender: 'aws', text: response.data.data.answer });
     sessionId.value = response.data.data.sessionId;
   } catch (err) {

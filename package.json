@@ -1,6 +1,6 @@
 {
   "name": "kb-1159",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "bin": {
     "kb-1159": "bin/kb-1159.js"
   },
