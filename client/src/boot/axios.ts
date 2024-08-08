@@ -10,7 +10,6 @@ declare module '@vue/runtime-core' {
 
 const getBaseUrl = async () => {
   const { baseUrl } = await fetch('/config.json').then((response) => response.json())
-  console.log(baseUrl)
   return baseUrl
 }
 // Be careful when using SSR for cross-request state pollution

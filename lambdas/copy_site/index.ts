@@ -4,6 +4,7 @@ import {
   S3Client,
   ListObjectsCommand,
   CopyObjectCommand,
+  PutObjectCommand,
 } from "@aws-sdk/client-s3";
 
 const s3Client = new S3Client({});
@@ -58,6 +59,40 @@ export const handler = async (event: CloudFormationEvent, context: Context) => {
         );
       }
     }
+    const putConfig = await s3Client.send(
+      new PutObjectCommand({
+        Key: "config.json",
+        Body: JSON.stringify({
+          baseUrl: process.env.API_URL,
+          cognitoOptions: {
+            Auth: {
+              Cognito: {
+                userPoolId: process.env.USER_POOL_ID,
+                userPoolClientId: process.env.USER_POOL_CLIENT_ID,
+                loginWith: {
+                  email: true,
+                },
+                signUpVerificationMethod: "code",
+                userAttributes: {
+                  email: {
+                    required: true,
+                  },
+                },
+                allowGuestAccess: false,
+                passwordFormat: {
+                  minLength: 12,
+                  requireLowercase: true,
+                  requireUppercase: true,
+                  requireNumbers: true,
+                  requireSpecialCharacters: true,
+                },
+              },
+            },
+          },
+        }),
+        Bucket: process.env.WEB_BUCKET,
+      })
+    );
     responseStatus = "SUCCESS";
     responseData = { Status: "Objects copied" };
   } catch (err) {

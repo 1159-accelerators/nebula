@@ -16,9 +16,11 @@ import {
   aws_apigateway as apigateway,
   aws_bedrock as bedrock,
   aws_cloudfront as cloudfront,
+  aws_cloudformation as cloudformation,
   CustomResource,
   Fn,
   CfnCondition,
+  CfnOutput,
 } from "aws-cdk-lib";
 import { ViewerCertificate } from "aws-cdk-lib/aws-cloudfront";
 // import * as sqs from 'aws-cdk-lib/aws-sqs';
@@ -40,15 +42,20 @@ export class Kb1159Stack extends Stack {
         "Will be used to create your Cognito account. You will receive an invitation email at this address",
       allowedPattern: "[^\\s@]+@[^\\s@]+\\.[^\\s@]+",
       constraintDescription: "Must enter a valid email address",
-      minLength: 5
+      minLength: 5,
     });
 
     const embeddingModelParam = new CfnParameter(this, "EmbeddingModelParam", {
       type: "String",
-      noEcho: false,
-      default: `arn:aws:bedrock:us-east-1::foundation-model/amazon.titan-embed-text-v2:0`,
+      default: "amazon.titan-embed-text-v2:0",
       description:
         "This model will be used to create embeddings from the document repository",
+      allowedValues: [
+        "amazon.titan-embed-text-v1",
+        "amazon.titan-embed-text-v2:0",
+        "cohere.embed-english-v3",
+        "cohere.embed-multilingual-v3",
+      ],
     });
 
     const foundationModelParam = new CfnParameter(
@@ -56,18 +63,25 @@ export class Kb1159Stack extends Stack {
       "FoundationModelParam",
       {
         type: "String",
-        noEcho: false,
-        default: `arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-5-sonnet-20240620-v1:0`,
+        default: "anthropic.claude-3-haiku-20240307-v1:0",
         description: "Base model for the conversational interface",
+        allowedValues: [
+          "amazon.titan-text-premier-v1:0",
+          "anthropic.claude-v2",
+          "anthropic.claude-v2:1",
+          "anthropic.claude-3-sonnet-20240229-v1:0",
+          "anthropic.claude-3-haiku-20240307-v1:0",
+          "anthropic.claude-instant-v1",
+        ],
       }
     );
 
     const uploadParam = new CfnParameter(this, "UploadParam", {
       type: "String",
-      noEcho: false,
       default: "YES",
       description:
         "Uploads sample documents to your bucket. Must answer YES or NO",
+      allowedValues: ["YES", "NO"],
     });
 
     this.templateOptions.metadata = {
@@ -158,6 +172,20 @@ export class Kb1159Stack extends Stack {
       userPoolId: kbUserPool.userPoolId,
       desiredDeliveryMediums: ["EMAIL"],
       username: userEmailParam.valueAsString,
+    });
+
+    const kbUserPoolClient = kbUserPool.addClient("KbUserPoolClient", {
+      authFlows: {
+        userSrp: true,
+      },
+      accessTokenValidity: Duration.minutes(180),
+      authSessionValidity: Duration.minutes(5),
+      enableTokenRevocation: true,
+      generateSecret: false,
+      idTokenValidity: Duration.minutes(180),
+      preventUserExistenceErrors: true,
+      refreshTokenValidity: Duration.days(30),
+      userPoolClientName: "web",
     });
 
     const kbCollection = new opensearchserverless.CfnCollection(
@@ -308,7 +336,7 @@ export class Kb1159Stack extends Stack {
         runtime: lambda.Runtime.NODEJS_20_X,
         code: lambda.Code.fromBucket(
           publicBucket,
-          `kb-accelerator/${process.env.npm_package_version}/create_index.zip`
+          `kb-accelerator/${process.env.npm_package_version}/lambdas/create_index.zip`
         ),
         handler: "create_index.handler",
         functionName: "KbCreateIndexFunction-1159",
@@ -317,11 +345,9 @@ export class Kb1159Stack extends Stack {
           REGION: `${Aws.REGION}`,
           ENDPOINT: kbCollection.attrCollectionEndpoint,
         },
-        timeout: Duration.seconds(30),
+        timeout: Duration.seconds(600),
       }
     );
-
-    kbCreateIndexFunction.applyRemovalPolicy(RemovalPolicy.DESTROY);
 
     const kbCreateIndexCr = new CustomResource(this, "KbCreateIndexCr", {
       serviceToken: kbCreateIndexFunction.functionArn,
@@ -340,8 +366,8 @@ export class Kb1159Stack extends Stack {
           new iam.PolicyStatement({
             actions: ["bedrock:InvokeModel"],
             resources: [
-              embeddingModelParam.valueAsString,
-              foundationModelParam.valueAsString,
+              `arn:aws:bedrock:${Aws.REGION}::foundation-model/${embeddingModelParam.valueAsString}`,
+              `arn:aws:bedrock:${Aws.REGION}::foundation-model/${foundationModelParam.valueAsString}`,
             ],
           }),
           new iam.PolicyStatement({
@@ -349,7 +375,12 @@ export class Kb1159Stack extends Stack {
             resources: [kbDocsBucket.bucketArn, `${kbDocsBucket.bucketArn}/*`],
           }),
           new iam.PolicyStatement({
-            actions: ["bedrock:RetrieveAndGenerate"],
+            actions: [
+              "bedrock:RetrieveAndGenerate",
+              "bedrock:ListFoundationModels",
+              "bedrock:ListCustomModels",
+              "bedrock:Retrieve",
+            ],
             resources: ["*"],
           }),
         ],
@@ -367,7 +398,7 @@ export class Kb1159Stack extends Stack {
       knowledgeBaseConfiguration: {
         type: "VECTOR",
         vectorKnowledgeBaseConfiguration: {
-          embeddingModelArn: embeddingModelParam.valueAsString,
+          embeddingModelArn: `arn:aws:bedrock:${Aws.REGION}::foundation-model/${embeddingModelParam.valueAsString}`,
         },
       },
       name: "kb-1159",
@@ -387,9 +418,11 @@ export class Kb1159Stack extends Stack {
     });
 
     const kbDepencyGroup = new DependencyGroup();
-    kbDepencyGroup.add(kbCollectionAccessPolicy);
+    kbDepencyGroup.add(kbCollection);
     kbDepencyGroup.add(kbBedrockRole);
     kbDepencyGroup.add(kbCreateIndexCr);
+
+    kb.node.addDependency(kbDepencyGroup);
 
     const kbDataSource = new bedrock.CfnDataSource(this, "KbDataSource", {
       name: "kb-source-1159",
@@ -414,8 +447,6 @@ export class Kb1159Stack extends Stack {
               "logs:CreateLogGroup",
               "logs:CreateLogStream",
               "logs:PutLogEvents",
-              "cloudformation:SignalResource",
-              "cloudformation:DescribeStackResource",
             ],
             resources: ["*"],
           }),
@@ -430,6 +461,14 @@ export class Kb1159Stack extends Stack {
               "bedrock:GetDataSource",
             ],
             resources: [kb.attrKnowledgeBaseArn],
+          }),
+          new iam.PolicyStatement({
+            actions: [
+              "bedrock:RetrieveAndGenerate",
+              "bedrock:Retrieve",
+              "bedrock:InvokeModel",
+            ],
+            resources: ["*"],
           }),
         ],
       }),
@@ -446,7 +485,7 @@ export class Kb1159Stack extends Stack {
       runtime: lambda.Runtime.NODEJS_20_X,
       code: lambda.Code.fromBucket(
         publicBucket,
-        `kb-accelerator/${process.env.npm_package_version}/web_api.zip`
+        `kb-accelerator/${process.env.npm_package_version}/lambdas/web_api.zip`
       ),
       handler: "web_api.handler",
       functionName: "KbWebApiFunction-1159",
@@ -455,7 +494,7 @@ export class Kb1159Stack extends Stack {
         DOCS_BUCKET: kbDocsBucket.bucketName,
         KB_ID: kb.attrKnowledgeBaseId,
         DATA_SOURCE_ID: kbDataSource.attrDataSourceId,
-        FOUNDATION_MODEL_ARN: foundationModelParam.valueAsString
+        FOUNDATION_MODEL_ARN: `arn:aws:bedrock:${Aws.REGION}::foundation-model/${foundationModelParam.valueAsString}`,
       },
       timeout: Duration.seconds(30),
     });
@@ -477,70 +516,40 @@ export class Kb1159Stack extends Stack {
       retainDeployments: false,
       defaultCorsPreflightOptions: {
         allowOrigins: apigateway.Cors.ALL_ORIGINS,
-        allowMethods: apigateway.Cors.ALL_METHODS, // this is also the default
+        allowMethods: apigateway.Cors.ALL_METHODS,
+        allowHeaders: apigateway.Cors.DEFAULT_HEADERS,
       },
-      // defaultMethodOptions: {
-      //   authorizationType: apigateway.AuthorizationType.COGNITO,
-      // },
-      deploy: true,
+      defaultMethodOptions: {
+        authorizer: kbApiAuthorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      },
+      deploy: false,
       proxy: true,
     });
 
     kbApiAuthorizer._attachToApi(kbApi);
 
-    const kbCopySitePolicy = new iam.ManagedPolicy(this, "KbCopySitePolicy", {
-      managedPolicyName: "KbCopySitePolicy-1159",
-      path: "/service-role/",
-      document: new iam.PolicyDocument({
-        statements: [
-          new iam.PolicyStatement({
-            actions: [
-              "logs:CreateLogGroup",
-              "logs:CreateLogStream",
-              "logs:PutLogEvents",
-              "cloudformation:SignalResource",
-              "cloudformation:DescribeStackResource",
-            ],
-            resources: ["*"],
-          }),
-          new iam.PolicyStatement({
-            actions: ["s3:ListBucket", "s3:GetObject"],
-            resources: [publicBucket.bucketArn, `${publicBucket.bucketArn}/*`],
-          }),
-          new iam.PolicyStatement({
-            actions: ["s3:PutObject"],
-            resources: [`${kbWebBucket.bucketArn}/*`],
-          }),
-        ],
-      }),
+    const kbApiDeployment = new apigateway.Deployment(this, "KbApiDeployment", {
+      api: kbApi,
     });
 
-    const kbCopySiteRole = new iam.Role(this, "KbCopySiteRole", {
-      roleName: "KbCopySiteRole-1159",
-      path: "/service-role/",
-      assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
-      managedPolicies: [kbCopySitePolicy],
+    const kbApiStagee = new apigateway.Stage(this, "KbApiStage", {
+      deployment: kbApiDeployment,
+      stageName: "prod",
     });
 
-    const kbCopySiteFunction = new lambda.Function(this, "KbCopySiteFunction", {
-      runtime: lambda.Runtime.NODEJS_20_X,
-      code: lambda.Code.fromBucket(
-        publicBucket,
-        `kb-accelerator/${process.env.npm_package_version}/copy_site.zip`
-      ),
-      handler: "copy_site.handler",
-      functionName: "KbCopySiteFunction-1159",
-      role: kbCopySiteRole,
-      environment: {
-        VERSION: `${process.env.npm_package_version}`,
-        WEB_BUCKET: kbWebBucket.bucketName,
+    kbApi.addGatewayResponse("KbApiUnauthorizedResponse", {
+      type: apigateway.ResponseType.UNAUTHORIZED,
+      statusCode: "401",
+      responseHeaders: {
+        "Access-Control-Allow-Origin": "'*'",
+        "Access-Control-Allow-Methods": "'*'",
+        "Access-Control-Allow-Headers": "'Content-Type, Authorization'",
+        //"Access-Control-Allow-Credentials": 'true'
       },
-      timeout: Duration.seconds(120),
-    });
-
-    const kbCopySiteCr = new CustomResource(this, "KbCopySiteCr", {
-      serviceToken: kbCopySiteFunction.functionArn,
-      removalPolicy: RemovalPolicy.RETAIN,
+      templates: {
+        "application/json": '{"message":$context.error.messageString}',
+      },
     });
 
     const kbSampleDataPolicy = new iam.ManagedPolicy(
@@ -595,7 +604,7 @@ export class Kb1159Stack extends Stack {
         runtime: lambda.Runtime.NODEJS_20_X,
         code: lambda.Code.fromBucket(
           publicBucket,
-          `kb-accelerator/${process.env.npm_package_version}/sample_data.zip`
+          `kb-accelerator/${process.env.npm_package_version}/lambdas/sample_data.zip`
         ),
         handler: "sample_data.handler",
         functionName: "KbSampleDataFunction-1159",
@@ -609,6 +618,11 @@ export class Kb1159Stack extends Stack {
         timeout: Duration.seconds(120),
       }
     );
+
+    const kbSampleDataCr = new CustomResource(this, "KbSampleDataCr", {
+      serviceToken: kbSampleDataFunction.functionArn,
+      removalPolicy: RemovalPolicy.RETAIN,
+    });
 
     const kbSampleDataCondition = new CfnCondition(
       this,
@@ -629,6 +643,10 @@ export class Kb1159Stack extends Stack {
     const kbSampleDataFunctionCfn = kbSampleDataFunction.node
       .defaultChild as lambda.CfnFunction;
     kbSampleDataFunctionCfn.cfnOptions.condition = kbSampleDataCondition;
+
+    const kbSampleDataCrCfn = kbSampleDataCr.node
+      .defaultChild as cloudformation.CfnCustomResource;
+    kbSampleDataCrCfn.cfnOptions.condition = kbSampleDataCondition;
 
     const kbOai = new cloudfront.OriginAccessIdentity(this, "KbOai");
 
@@ -658,5 +676,68 @@ export class Kb1159Stack extends Stack {
           cloudfront.ViewerCertificate.fromCloudFrontDefaultCertificate(),
       }
     );
+
+    const kbCopySitePolicy = new iam.ManagedPolicy(this, "KbCopySitePolicy", {
+      managedPolicyName: "KbCopySitePolicy-1159",
+      path: "/service-role/",
+      document: new iam.PolicyDocument({
+        statements: [
+          new iam.PolicyStatement({
+            actions: [
+              "logs:CreateLogGroup",
+              "logs:CreateLogStream",
+              "logs:PutLogEvents",
+              "cloudformation:SignalResource",
+              "cloudformation:DescribeStackResource",
+            ],
+            resources: ["*"],
+          }),
+          new iam.PolicyStatement({
+            actions: ["s3:ListBucket", "s3:GetObject"],
+            resources: [publicBucket.bucketArn, `${publicBucket.bucketArn}/*`],
+          }),
+          new iam.PolicyStatement({
+            actions: ["s3:PutObject"],
+            resources: [`${kbWebBucket.bucketArn}/*`],
+          }),
+        ],
+      }),
+    });
+
+    const kbCopySiteRole = new iam.Role(this, "KbCopySiteRole", {
+      roleName: "KbCopySiteRole-1159",
+      path: "/service-role/",
+      assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
+      managedPolicies: [kbCopySitePolicy],
+    });
+
+    const kbCopySiteFunction = new lambda.Function(this, "KbCopySiteFunction", {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      code: lambda.Code.fromBucket(
+        publicBucket,
+        `kb-accelerator/${process.env.npm_package_version}/lambdas/copy_site.zip`
+      ),
+      handler: "copy_site.handler",
+      functionName: "KbCopySiteFunction-1159",
+      role: kbCopySiteRole,
+      environment: {
+        VERSION: `${process.env.npm_package_version}`,
+        WEB_BUCKET: kbWebBucket.bucketName,
+        API_URL: kbApiStagee.urlForPath(),
+        USER_POOL_ID: kbUserPool.userPoolId,
+        USER_POOL_CLIENT_ID: kbUserPoolClient.userPoolClientId,
+      },
+      timeout: Duration.seconds(120),
+    });
+
+    const kbCopySiteCr = new CustomResource(this, "KbCopySiteCr", {
+      serviceToken: kbCopySiteFunction.functionArn,
+      removalPolicy: RemovalPolicy.RETAIN,
+    });
+
+    const kbDistoOutput = new CfnOutput(this, "WebUrl", {
+      description: "CloudFront Web URL for the demo application",
+      value: kbDistro.distributionDomainName,
+    });
   }
 }

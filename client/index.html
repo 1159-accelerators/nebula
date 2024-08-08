@@ -13,6 +13,13 @@
     <link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16x16.png">
     <link rel="icon" type="image/ico" href="favicon.ico">
   </head>
+  <script>
+    window.global = window;
+    window.process = {
+      env: { DEBUG: undefined },
+    }
+    var exports = {};
+  </script>
   <body class="bg-secondary">
     <!-- quasar:entry-point -->
   </body>

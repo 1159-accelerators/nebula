@@ -28,56 +28,16 @@ const bedrockGetDataSourceCommand = new GetDataSourceCommand({
 
 const bedrockAgentRuntimeClient = new BedrockAgentRuntimeClient({});
 
-const retrieveAndGenerateConfiguration = {
-  // RetrieveAndGenerateConfiguration
-  type: "KNOWLEDGE_BASE", // required
-  knowledgeBaseConfiguration: {
-    knowledgeBaseId: process.env.KB_ID,
-    modelArn: process.env.FOUNDATION_MODEL_ARN, // required
-    retrievalConfiguration: {
-      // KnowledgeBaseRetrievalConfiguration
-      vectorSearchConfiguration: {
-        // KnowledgeBaseVectorSearchConfiguration
-        numberOfResults: Number("3"),
-        overrideSearchType: "HYBRID" || "SEMANTIC",
-      },
-    },
-  },
-};
-const input = {
-  // RetrieveAndGenerateRequest
-  sessionId: "STRING_VALUE",
-  input: {
-    // RetrieveAndGenerateInput
-    text: "STRING_VALUE", // required
-  },
-  retrieveAndGenerateConfiguration: {
-    // RetrieveAndGenerateConfiguration
-    type: "KNOWLEDGE_BASE", // required
-    knowledgeBaseConfiguration: {
-      knowledgeBaseId: process.env.KB_ID,
-      modelArn: process.env.FOUNDATION_MODEL_ARN, // required
-      retrievalConfiguration: {
-        // KnowledgeBaseRetrievalConfiguration
-        vectorSearchConfiguration: {
-          // KnowledgeBaseVectorSearchConfiguration
-          numberOfResults: Number("3"),
-          overrideSearchType: "HYBRID" || "SEMANTIC",
-        },
-      },
-    },
-  },
-};
-
 export const handler = async (
   event: APIGatewayProxyEvent
 ): Promise<APIGatewayProxyResult> => {
   const response = {
     statusCode: 200,
     headers: {
-      "Access-Control-Allow-Headers": "Content-Type",
+      "Access-Control-Allow-Headers": "Content-Type,Authorization",
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "OPTIONS,POST,GET",
+      //"Access-Control-Allow-Credentials": "true"
     },
     body: "",
   };
@@ -133,7 +93,32 @@ export const handler = async (
   ) {
     const body = JSON.parse(event.body)
     try {
+      const query = await bedrockAgentRuntimeClient.send(new RetrieveAndGenerateCommand({
+        sessionId: body.sessionId,
+        input: {
+          text: body.question, // required
+        },
+        retrieveAndGenerateConfiguration: {
+          type: "KNOWLEDGE_BASE", // required
+          knowledgeBaseConfiguration: {
+            knowledgeBaseId: process.env.KB_ID,
+            modelArn: process.env.FOUNDATION_MODEL_ARN,
+            retrievalConfiguration: { // KnowledgeBaseRetrievalConfiguration
+              vectorSearchConfiguration: { // KnowledgeBaseVectorSearchConfiguration
+                numberOfResults: Number("20"),
+                overrideSearchType: "HYBRID",
+              }
+            }
+          },
+        },
+      }));
 
+      response.body = JSON.stringify({
+        data: {
+          answer: query.output?.text,
+          sessionId: query.sessionId
+        },
+      });
     } catch (err) {
       console.log(err);
       response.statusCode = 500;

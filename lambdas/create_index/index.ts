@@ -84,6 +84,10 @@ export const handler = async (event: CloudFormationEvent, context: Context) => {
       index: "kb-index-1159",
       body: settings,
     });
+    await new Promise(resolve => setTimeout(resolve, 30000));
+    // setTimeout(() => {
+    //   console.log("Pausing for index access policy creation")
+    // }, 60000)
     responseStatus = "SUCCESS";
     responseData = { Status: "Index created" };
   } catch (err) {
