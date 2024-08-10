@@ -8,3 +8,4 @@ node_modules
 cdk.out
 .DS_Store
 dist
+client/public/config.json
