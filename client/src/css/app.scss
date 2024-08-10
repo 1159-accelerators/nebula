@@ -55,6 +55,7 @@
   --amplify-components-button-link-active-background-color: transparent;
   --amplify-components-button-link-focus-background-color: transparent;
   --amplify-components-button-link-hover-background-color: transparent;
+  --amplify-components-fieldcontrol-outline-color: var($primary);
 }
 
 body.mobile [data-amplify-authenticator] {
@@ -67,6 +68,17 @@ body.desktop [data-amplify-authenticator] {
 
 .amplify-button--primary {
   background: $primary;
+}
+
+.amplify-input {
+  outline-width: 2px !important;
+  outline-style: solid !important;
+  outline-color: #ffffff !important;
+}
+
+.amplify-input:focus {
+  outline-color: $primary !important;
+  border: none !important;
 }
 
 
