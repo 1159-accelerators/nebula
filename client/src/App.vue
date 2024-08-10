@@ -6,7 +6,7 @@
         <authenticator :hide-sign-up="true">
           <template v-slot:sign-in-header>
             <div class="flex-center row q-pt-lg">
-            <img src="/1159-teal-gradient.png" :style="{maxWidth: '60%', height: 'auto'}" />
+            <img src="~assets/logos/1159-teal-gradient.png" :style="{maxWidth: '60%', height: 'auto'}" />
           </div>
           </template>
         </authenticator> </q-page

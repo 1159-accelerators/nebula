@@ -3,7 +3,7 @@
       <q-toolbar style="height: 100px">
         <q-toolbar-title>
           <q-avatar size="75px">
-            <q-img src="/1159-gunmetal-solid.png" />
+            <q-img src="~assets/logos/1159-gunmetal-solid.png" />
           </q-avatar>
         </q-toolbar-title>
 
