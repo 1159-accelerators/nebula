@@ -25,12 +25,13 @@
         v-if="uiStore.waiting"
         ><q-spinner-dots size="2rem"></q-spinner-dots
       ></q-chat-message>
+      <div id="scroll-placeholder" ref="scrollPlaceholderRef"></div>
     </div>
   </q-page>
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue';
+import { onMounted, ref } from 'vue';
 import { useUiStore } from 'stores/ui-store';
 import { useAuthStore } from 'src/stores/auth-store';
 import { useKbStore } from 'src/stores/kb-store';
@@ -45,9 +46,12 @@ defineOptions({
   name: 'KbIndex',
 });
 
+const scrollPlaceholderRef = ref<HTMLDivElement | null>(null);
+
 onMounted(async () => {
   await authStore.setToken();
   await kbStore.getDocsInfo();
   await kbStore.getKbInfo();
+  messageStore.scrollPlaceholderRef = scrollPlaceholderRef.value
 });
 </script>
