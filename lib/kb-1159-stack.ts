@@ -63,7 +63,7 @@ export class Kb1159Stack extends Stack {
       "FoundationModelParam",
       {
         type: "String",
-        default: "anthropic.claude-3-haiku-20240307-v1:0",
+        default: "anthropic.claude-3-sonnet-20240229-v1:0",
         description: "Base model for the conversational interface",
         allowedValues: [
           "amazon.titan-text-premier-v1:0",
