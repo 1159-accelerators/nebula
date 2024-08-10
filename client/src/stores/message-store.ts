@@ -2,9 +2,11 @@ import { defineStore } from 'pinia';
 import { useUiStore } from './ui-store';
 import { api } from 'boot/axios';
 import { useAuthStore } from './auth-store';
+import { scroll } from 'quasar';
 
 const authStore = useAuthStore();
 const uiStore = useUiStore();
+const { getScrollTarget, setVerticalScrollPosition } = scroll;
 
 export const useMessageStore = defineStore('message', {
   state: () => ({
@@ -12,6 +14,7 @@ export const useMessageStore = defineStore('message', {
     sessionId: undefined as string | undefined,
     questionInput: '',
     questionInputRef: null as HTMLDivElement | null,
+    scrollPlaceholderRef: null as HTMLDivElement | null,
   }),
   // getters: {
   //   doubleCount: (state) => state.counter * 2,
@@ -27,6 +30,7 @@ export const useMessageStore = defineStore('message', {
       const staticInput = JSON.parse(JSON.stringify(this.questionInput));
       this.questionInput = '';
       this.messages.push({ sender: 'me', text: staticInput });
+      this.scrollToElement();
 
       const payload = { question: staticInput, sessionId: this.sessionId };
 
@@ -40,7 +44,16 @@ export const useMessageStore = defineStore('message', {
         console.log(err);
       }
       uiStore.waiting = false;
+      this.scrollToElement();
       this.questionInputRef?.focus();
+    },
+    scrollToElement() {
+      if (this.scrollPlaceholderRef) {
+        const target = getScrollTarget(this.scrollPlaceholderRef);
+        const offset = this.scrollPlaceholderRef.offsetTop;
+        const duration = 1000;
+        setVerticalScrollPosition(target, offset, duration);
+      }
     },
   },
 });

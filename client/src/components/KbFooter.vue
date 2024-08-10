@@ -14,7 +14,6 @@
           class="kb-selected-input"
           autofocus
           ref="inputRef"
-          :disable="uiStore.waiting"
         >
           <template v-slot:append>
             <q-btn
