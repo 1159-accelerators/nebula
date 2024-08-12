@@ -366,8 +366,16 @@ export class Kb1159Stack extends Stack {
           new iam.PolicyStatement({
             actions: ["bedrock:InvokeModel"],
             resources: [
-              `arn:aws:bedrock:${Aws.REGION}::foundation-model/${embeddingModelParam.valueAsString}`,
-              `arn:aws:bedrock:${Aws.REGION}::foundation-model/${foundationModelParam.valueAsString}`,
+              `arn:aws:bedrock:${Aws.REGION}::foundation-model/amazon.titan-embed-text-v1`,
+              `arn:aws:bedrock:${Aws.REGION}::foundation-model/amazon.titan-embed-text-v2:0`,
+              `arn:aws:bedrock:${Aws.REGION}::foundation-model/cohere.embed-english-v3`,
+              `arn:aws:bedrock:${Aws.REGION}::foundation-model/cohere.embed-multilingual-v3`,
+              `arn:aws:bedrock:${Aws.REGION}::foundation-model/amazon.titan-text-premier-v1:0`,
+              `arn:aws:bedrock:${Aws.REGION}::foundation-model/anthropic.claude-v2`,
+              `arn:aws:bedrock:${Aws.REGION}::foundation-model/anthropic.claude-v2:1`,
+              `arn:aws:bedrock:${Aws.REGION}::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0`,
+              `arn:aws:bedrock:${Aws.REGION}::foundation-model/anthropic.claude-3-haiku-20240307-v1:0`,
+              `arn:aws:bedrock:${Aws.REGION}::foundation-model/anthropic.claude-instant-v1`,
             ],
           }),
           new iam.PolicyStatement({
