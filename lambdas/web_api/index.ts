@@ -10,6 +10,7 @@ import {
 import {
   BedrockAgentRuntimeClient,
   RetrieveAndGenerateCommand,
+  Citation
 } from "@aws-sdk/client-bedrock-agent-runtime";
 
 const s3Client = new S3Client({});
@@ -38,6 +39,7 @@ type ResponseBody = {
     dataSource?: DataSource;
     answer?: string;
     sessionId?: string;
+    citations?: Citation[]
   };
   error?: {
     message?: string;
@@ -135,6 +137,7 @@ export const handler = async (
         data: {
           answer: query.output?.text,
           sessionId: query.sessionId,
+          citations: query.citations
         },
       });
     } catch (err) {

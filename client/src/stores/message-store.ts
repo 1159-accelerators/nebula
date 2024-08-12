@@ -38,7 +38,7 @@ export const useMessageStore = defineStore('message', {
         const response = await api.post('/chat', payload, {
           headers: { Authorization: `Bearer ${authStore.idToken}` },
         });
-        this.messages.push({ sender: 'aws', text: response.data.data.answer });
+        this.messages.push({ sender: 'aws', text: response.data.data.answer, references: response.data.data.citations[0].retrievedReferences });
         this.sessionId = response.data.data.sessionId;
       } catch (err) {
         console.log(err);
@@ -61,4 +61,17 @@ export const useMessageStore = defineStore('message', {
 interface Message {
   sender: 'me' | 'aws';
   text: string;
+  references?: Reference[]
+}
+
+export interface Reference {
+  content: {
+    text: string;
+  };
+  location: {
+    s3Location: {
+      uri: string;
+    };
+    type: string;
+  };
 }
