@@ -10,7 +10,7 @@ import {
 import {
   BedrockAgentRuntimeClient,
   RetrieveAndGenerateCommand,
-  Citation
+  Citation,
 } from "@aws-sdk/client-bedrock-agent-runtime";
 
 const s3Client = new S3Client({});
@@ -39,7 +39,7 @@ type ResponseBody = {
     dataSource?: DataSource;
     answer?: string;
     sessionId?: string;
-    citations?: Citation[]
+    citations?: Citation[];
   };
   error?: {
     message?: string;
@@ -125,8 +125,20 @@ export const handler = async (
                 // KnowledgeBaseRetrievalConfiguration
                 vectorSearchConfiguration: {
                   // KnowledgeBaseVectorSearchConfiguration
-                  numberOfResults: Number("20"),
+                  numberOfResults: Number(process.env.SOURCE_CHUNKS),
                   overrideSearchType: "HYBRID",
+                },
+              },
+              generationConfiguration: {
+                // promptTemplate: { // PromptTemplate
+                //   textPromptTemplate: "STRING_VALUE",
+                // },
+                inferenceConfig: {
+                  textInferenceConfig: {
+                    temperature: Number(process.env.TEMPERATURE),
+                    topP: Number(process.env.TOP_P),
+                    maxTokens: Number(process.env.MAX_TOKENS),
+                  },
                 },
               },
             },
@@ -137,7 +149,7 @@ export const handler = async (
         data: {
           answer: query.output?.text,
           sessionId: query.sessionId,
-          citations: query.citations
+          citations: query.citations,
         },
       });
     } catch (err) {

@@ -503,6 +503,10 @@ export class Kb1159Stack extends Stack {
         KB_ID: kb.attrKnowledgeBaseId,
         DATA_SOURCE_ID: kbDataSource.attrDataSourceId,
         FOUNDATION_MODEL_ARN: `arn:aws:bedrock:${Aws.REGION}::foundation-model/${foundationModelParam.valueAsString}`,
+        SOURCE_CHUNKS: "25",
+        TEMPERATURE: "0.3",
+        TOP_P: "0.9",
+        MAX_TOKENS: "2048",
       },
       timeout: Duration.seconds(30),
     });
