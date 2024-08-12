@@ -1,9 +1,9 @@
 // app global css in SCSS form
 .text-gunmetal {
-  color: #2a2d34 !important;
+  color: $gunmetal !important;
 }
 .bg-gunmetal {
-  background: #2a2d34 !important;
+  background: $gunmetal !important;
 }
 
 .text-charcoal {
@@ -85,4 +85,11 @@ body.desktop [data-amplify-authenticator] {
   height: 1px;
 }
 
+.q-message-text:last-child {
+  max-height: 0 !important;
+}
+
+.kb-message-sent-name {
+  text-align: right;
+}
 
