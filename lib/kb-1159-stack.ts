@@ -122,7 +122,7 @@ export class Kb1159Stack extends Stack {
       encryption: s3.BucketEncryption.S3_MANAGED,
       enforceSSL: true,
       versioned: false,
-      removalPolicy: RemovalPolicy.DESTROY,
+      removalPolicy: RemovalPolicy.RETAIN,
     });
     const corsRule: s3.CorsRule = {
       allowedMethods: [s3.HttpMethods.GET, s3.HttpMethods.HEAD],
@@ -137,7 +137,7 @@ export class Kb1159Stack extends Stack {
       encryption: s3.BucketEncryption.S3_MANAGED,
       enforceSSL: true,
       versioned: false,
-      removalPolicy: RemovalPolicy.DESTROY,
+      removalPolicy: RemovalPolicy.RETAIN,
       cors: [corsRule],
     });
 
@@ -299,7 +299,7 @@ export class Kb1159Stack extends Stack {
       this,
       "KbCreateIndexPolicy",
       {
-        managedPolicyName: "KbIndexFunctionPolicy-1159",
+        managedPolicyName: "KbCreateIndexPolicy-1159",
         path: "/service-role/",
         document: new iam.PolicyDocument({
           statements: [

@@ -24,6 +24,13 @@
   padding-left: 20px;
 }
 
+.kb-info-page {
+  padding-top: 8px;
+  padding-right: 20px;
+  padding-bottom: 40px;
+  padding-left: 20px;
+}
+
 .kb-footer {
   padding: 20px 8px;
 }
@@ -39,16 +46,19 @@
 
 @media (min-width: $breakpoint-md-max) {
   .kb-container {
-    max-width: 600px;
+    max-width: 900px;
   }
 }
 
 [data-amplify-authenticator] {
   --amplify-components-authenticator-router-box-shadow: 0;
-  --amplify-components-authenticator-form-padding: var(--amplify-space-medium) var(--amplify-space-xl) var(--amplify-space-xl);
+  --amplify-components-authenticator-form-padding: var(--amplify-space-medium)
+    var(--amplify-space-xl) var(--amplify-space-xl);
   --amplify-components-button-primary-background-color: var($primary);
   --amplify-components-fieldcontrol-focus-box-shadow: 0;
-  --amplify-components-tabs-item-active-border-color: var(--amplify-colors-neutral-100);
+  --amplify-components-tabs-item-active-border-color: var(
+    --amplify-colors-neutral-100
+  );
   --amplify-components-tabs-item-color: var(--amplify-colors-neutral-80);
   --amplify-components-tabs-item-active-color: var(--amplify-colors-purple-100);
   --amplify-components-button-link-color: var($primary);
@@ -93,3 +103,23 @@ body.desktop [data-amplify-authenticator] {
   text-align: right;
 }
 
+.info-h1 {
+  color: $primary;
+  font-size: 2.4em;
+  font-weight: 700;
+}
+
+.info-h2 {
+  color: $primary;
+  font-size: 2.2em;
+  font-weight: 700;
+  border-width: 0 0 1px 0;
+  border-color: $secondary;
+  border-style: solid;
+}
+
+.info-h3 {
+  color: $gunmetal;
+  font-size: 1.2em;
+  font-weight: 700;
+}
