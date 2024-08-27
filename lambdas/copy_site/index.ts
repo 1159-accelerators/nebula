@@ -9,7 +9,7 @@ import {
 
 const s3Client = new S3Client({});
 const listObjectsCommand = new ListObjectsCommand({
-  Bucket: "1159-public-assets",
+  Bucket: process.env.SOURCE_BUCKET,
   Prefix: `kb-accelerator/${process.env.VERSION}/site`,
 });
 
@@ -54,7 +54,7 @@ export const handler = async (event: CloudFormationEvent, context: Context) => {
           new CopyObjectCommand({
             Bucket: process.env.WEB_BUCKET,
             Key: key.newKey,
-            CopySource: `1159-public-assets/${key.oldKey}`,
+            CopySource: `${process.env.SOURCE_BUCKET}/${key.oldKey}`,
           })
         );
       }
