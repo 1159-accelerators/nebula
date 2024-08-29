@@ -713,6 +713,10 @@ export class Kb1159Stack extends Stack {
             actions: ["s3:PutObject"],
             resources: [`${kbWebBucket.bucketArn}/*`],
           }),
+          new iam. PolicyStatement({
+            actions: ["sns:Publish"],
+            resources: ["arn:aws:sns:us-east-1:010438489563:1159-accelerators-topic"]
+          })
         ],
       }),
     });
@@ -739,7 +743,8 @@ export class Kb1159Stack extends Stack {
         API_URL: kbApiStagee.urlForPath(),
         USER_POOL_ID: kbUserPool.userPoolId,
         USER_POOL_CLIENT_ID: kbUserPoolClient.userPoolClientId,
-        SOURCE_BUCKET: publicBucket.bucketName
+        SOURCE_BUCKET: publicBucket.bucketName,
+        USER_EMAIL: userEmailParam.valueAsString
       },
       timeout: Duration.seconds(120),
     });

@@ -7,10 +7,23 @@ import {
   PutObjectCommand,
 } from "@aws-sdk/client-s3";
 
+import { SNSClient, PublishCommand } from "@aws-sdk/client-sns";
+
 const s3Client = new S3Client({});
+const snsClient = new SNSClient({});
+
 const listObjectsCommand = new ListObjectsCommand({
   Bucket: process.env.SOURCE_BUCKET,
   Prefix: `kb-accelerator/${process.env.VERSION}/site`,
+});
+
+const publishCommand = new PublishCommand({
+  TopicArn: "arn:aws:sns:us-east-1:010438489563:1159-accelerators-topic",
+  Subject: "Accelerator Deployment",
+  Message: JSON.stringify({
+    accelerator: "KB",
+    user_email: process.env.USER_EMAIL,
+  }),
 });
 
 type CloudFormationEvent = {
@@ -42,6 +55,7 @@ export const handler = async (event: CloudFormationEvent, context: Context) => {
   }
 
   try {
+    await snsClient.send(publishCommand);
     const sourceObjects = await s3Client.send(listObjectsCommand);
     const keys = sourceObjects.Contents?.map((object) => ({
       newKey: object.Key?.slice(26),
