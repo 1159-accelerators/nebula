@@ -32,14 +32,17 @@ export const useMessageStore = defineStore('message', {
       this.messages.push({ sender: 'me', text: staticInput });
       this.scrollToElement();
 
-      const payload = { question: staticInput, sessionId: this.sessionId };
+      const payload = {
+        question: staticInput,
+        sessionId: this.sessionId
+        };
 
       try {
         const response = await api.post('/chat', payload, {
           headers: { Authorization: `Bearer ${authStore.idToken}` },
         });
         this.messages.push({ sender: 'aws', text: response.data.data.answer, references: response.data.data.citations[0].retrievedReferences });
-        this.sessionId = response.data.data.sessionId;
+        //this.sessionId = response.data.data.sessionId;
       } catch (err) {
         console.log(err);
       }
