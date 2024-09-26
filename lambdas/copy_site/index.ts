@@ -58,7 +58,7 @@ export const handler = async (event: CloudFormationEvent, context: Context) => {
     await snsClient.send(publishCommand);
     const sourceObjects = await s3Client.send(listObjectsCommand);
     const keys = sourceObjects.Contents?.map((object) => ({
-      newKey: object.Key?.slice(26),
+      newKey: object.Key?.slice(18),
       oldKey: object.Key,
     }));
 
