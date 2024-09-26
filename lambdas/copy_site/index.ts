@@ -14,7 +14,7 @@ const snsClient = new SNSClient({});
 
 const listObjectsCommand = new ListObjectsCommand({
   Bucket: process.env.SOURCE_BUCKET,
-  Prefix: `kb-accelerator/${process.env.VERSION}/site`,
+  Prefix: `nebula/${process.env.VERSION}/site`,
 });
 
 const publishCommand = new PublishCommand({

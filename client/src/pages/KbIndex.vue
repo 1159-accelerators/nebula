@@ -15,7 +15,7 @@
             v-if="message.sender === 'me'"
           />
           <kb-chat
-            name="11:59 AI"
+            name="Nebula (11:59)"
             :text="message.text"
             bg-color="white"
             text-color="gunmetal"
@@ -24,7 +24,7 @@
           />
         </template>
         <kb-chat
-          name="11:59 AI"
+          name="Nebula (11:59)"
           bg-color="white"
           text-color="gunmetal"
           v-if="uiStore.waiting"

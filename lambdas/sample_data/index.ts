@@ -13,7 +13,7 @@ import {
 const s3Client = new S3Client({});
 const listObjectsCommand = new ListObjectsCommand({
   Bucket: process.env.SOURCE_BUCKET,
-  Prefix: `kb-accelerator/${process.env.VERSION}/sample_data/`,
+  Prefix: `nebula/${process.env.VERSION}/sample_data/`,
 });
 
 const bedrockAgentClient = new BedrockAgentClient({});

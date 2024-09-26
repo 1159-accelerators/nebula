@@ -1,8 +1,8 @@
 {
-  "name": "kb-1159",
-  "version": "1.2.0",
+  "name": "nebula",
+  "version": "1.3.0",
   "bin": {
-    "kb-1159": "bin/kb-1159.js"
+    "nebula": "bin/nebula.js"
   },
   "scripts": {
     "prebuild": "rm -rf dist",
@@ -20,10 +20,10 @@
     "package-data": "zip -j dist/sample_data.zip dist/sample_data.js*",
     "synth": "cdk synth --quiet",
     "upload": "npm run upload-lambdas && npm run upload-site && npm run upload-iac && npm run upload-data",
-    "upload-iac": "aws s3 cp cdk.out/Kb1159Stack.template.json s3://1159-public-assets/kb-accelerator/$npm_package_version/template.json --profile shared-services",
-    "upload-lambdas": "aws s3 cp dist/ s3://1159-public-assets/kb-accelerator/$npm_package_version/lambdas/ --recursive --exclude '*' --include '*.zip' --profile shared-services",
-    "upload-site": "aws s3 sync client/dist/spa s3://1159-public-assets/kb-accelerator/$npm_package_version/site/ --exclude '.DS_Store' --exclude 'config.json' --profile shared-services",
-    "upload-data": "aws s3 sync sample_data s3://1159-public-assets/kb-accelerator/$npm_package_version/sample_data/ --exclude '.DS_Store' --profile shared-services",
+    "upload-iac": "aws s3 cp cdk.out/NebulaStack.template.json s3://1159-public-assets/nebula/$npm_package_version/template.json --profile shared-services",
+    "upload-lambdas": "aws s3 cp dist/ s3://1159-public-assets/nebula/$npm_package_version/lambdas/ --recursive --exclude '*' --include '*.zip' --profile shared-services",
+    "upload-site": "aws s3 sync client/dist/spa s3://1159-public-assets/nebula/$npm_package_version/site/ --exclude '.DS_Store' --exclude 'config.json' --profile shared-services",
+    "upload-data": "aws s3 sync sample_data s3://1159-public-assets/nebula/$npm_package_version/sample_data/ --exclude '.DS_Store' --profile shared-services",
     "watch": "tsc -w",
     "test": "jest",
     "cdk": "cdk"

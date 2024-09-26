@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 import "source-map-support/register";
 import * as cdk from "aws-cdk-lib";
-import { Kb1159Stack } from "../lib/kb-1159-stack";
+import { NebulaStack } from "../lib/nebula-stack";
 
 const app = new cdk.App();
-new Kb1159Stack(app, "Kb1159Stack", {
+new NebulaStack(app, "NebulaStack", {
   synthesizer: new cdk.DefaultStackSynthesizer({
     generateBootstrapVersionRule: false
   })

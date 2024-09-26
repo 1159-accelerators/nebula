@@ -65,7 +65,7 @@ export const handler = async (event: CloudFormationEvent, context: Context) => {
       properties: {
         BEDROCK_METADATA: { type: "text", index: false },
         BEDROCK_TEXT_CHUNK: { type: "text" },
-        "kb-vector-1159": {
+        "nebula-vector": {
           type: "knn_vector",
           dimension: 1024,
           method: {
@@ -81,7 +81,7 @@ export const handler = async (event: CloudFormationEvent, context: Context) => {
 
   try {
     await client.indices.create({
-      index: "kb-index-1159",
+      index: "nebula-index",
       body: settings,
     });
     await new Promise(resolve => setTimeout(resolve, 30000));
