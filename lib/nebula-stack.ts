@@ -1,4 +1,3 @@
-import { Condition } from "./../lambdas/sample_data/node_modules/@aws-sdk/client-s3/dist-types/models/models_0.d";
 import { Construct, DependencyGroup } from "constructs";
 import {
   RemovalPolicy,
@@ -22,10 +21,9 @@ import {
   CfnCondition,
   CfnOutput,
 } from "aws-cdk-lib";
-import { ViewerCertificate } from "aws-cdk-lib/aws-cloudfront";
 // import * as sqs from 'aws-cdk-lib/aws-sqs';
 
-export class Kb1159Stack extends Stack {
+export class NebulaStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
     super(scope, id, props);
 
@@ -116,7 +114,7 @@ export class Kb1159Stack extends Stack {
       },
     };
 
-    const kbDocsBucket = new s3.Bucket(this, "KbDocsBucket", {
+    const nebulaDocsBucket = new s3.Bucket(this, "NebulaDocsBucket", {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       autoDeleteObjects: false,
       encryption: s3.BucketEncryption.S3_MANAGED,
@@ -131,7 +129,7 @@ export class Kb1159Stack extends Stack {
       maxAge: 300,
     };
 
-    const kbWebBucket = new s3.Bucket(this, "KbWebBucket", {
+    const nebulaWebBucket = new s3.Bucket(this, "NebulaWebBucket", {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       autoDeleteObjects: false,
       encryption: s3.BucketEncryption.S3_MANAGED,
@@ -141,7 +139,7 @@ export class Kb1159Stack extends Stack {
       cors: [corsRule],
     });
 
-    const kbUserPool = new cognito.UserPool(this, "KbUserPool", {
+    const nebulaUserPool = new cognito.UserPool(this, "NebulaUserPool", {
       deletionProtection: false,
       mfa: cognito.Mfa.OFF,
       passwordPolicy: {
@@ -164,17 +162,17 @@ export class Kb1159Stack extends Stack {
         username: false,
       },
       autoVerify: { email: true, phone: false },
-      userPoolName: "KbUserPool-1159",
+      userPoolName: "NebulaUserPool",
       removalPolicy: RemovalPolicy.DESTROY,
     });
 
-    const kbUser = new cognito.CfnUserPoolUser(this, "KbUser", {
-      userPoolId: kbUserPool.userPoolId,
+    const nebulaUser = new cognito.CfnUserPoolUser(this, "NebulaUser", {
+      userPoolId: nebulaUserPool.userPoolId,
       desiredDeliveryMediums: ["EMAIL"],
       username: userEmailParam.valueAsString,
     });
 
-    const kbUserPoolClient = kbUserPool.addClient("KbUserPoolClient", {
+    const nebulaUserPoolClient = nebulaUserPool.addClient("NebulaUserPoolClient", {
       authFlows: {
         userSrp: true,
       },
@@ -188,51 +186,51 @@ export class Kb1159Stack extends Stack {
       userPoolClientName: "web",
     });
 
-    const kbCollection = new opensearchserverless.CfnCollection(
+    const nebulaCollection = new opensearchserverless.CfnCollection(
       this,
-      "KbCollection",
+      "NebulaCollection",
       {
-        name: "kb-collection-1159",
-        description: "Collection for 11:59 Knowledge Base",
+        name: "nebula-collection",
+        description: "Collection for Nebula Knowledge Base",
         standbyReplicas: "DISABLED",
         type: "VECTORSEARCH",
       }
     );
 
-    const kbCollectionEncryptionPolicy =
+    const nebulaCollectionEncryptionPolicy =
       new opensearchserverless.CfnSecurityPolicy(
         this,
-        "KbCollectionEncryptionPolicy",
+        "NebulaCollectionEncryptionPolicy",
         {
           policy: JSON.stringify({
             Rules: [
               {
-                Resource: ["collection/kb-collection-1159"],
+                Resource: ["collection/nebula-collection"],
                 ResourceType: "collection",
               },
             ],
             AWSOwnedKey: true,
           }),
           type: "encryption",
-          description: "Encryption policy for Knowledge Base Collection",
-          name: "kb-encryption-policy-1159",
+          description: "Encryption policy for Nebula Knowledge Base Collection",
+          name: "nebula-encryption-policy",
         }
       );
 
-    const kbCollectionNetworkPolicy =
+    const nebulaCollectionNetworkPolicy =
       new opensearchserverless.CfnSecurityPolicy(
         this,
-        "KbCollectionNetworkPolicy",
+        "NebulaCollectionNetworkPolicy",
         {
           policy: JSON.stringify([
             {
               Rules: [
                 {
-                  Resource: ["collection/kb-collection-1159"],
+                  Resource: ["collection/nebula-collection"],
                   ResourceType: "dashboard",
                 },
                 {
-                  Resource: ["collection/kb-collection-1159"],
+                  Resource: ["collection/nebula-collection"],
                   ResourceType: "collection",
                 },
               ],
@@ -241,19 +239,19 @@ export class Kb1159Stack extends Stack {
           ]),
           type: "network",
           description: "Network policy for Knowledge Base Collection",
-          name: "kb-network-policy-1159",
+          name: "nebula-network-policy",
         }
       );
 
-    const kbCollectionAccessPolicy = new opensearchserverless.CfnAccessPolicy(
+    const nebulaCollectionAccessPolicy = new opensearchserverless.CfnAccessPolicy(
       this,
-      "KbCollectionAccessPolicy",
+      "NebulaCollectionAccessPolicy",
       {
         policy: JSON.stringify([
           {
             Rules: [
               {
-                Resource: ["collection/kb-collection-1159"],
+                Resource: ["collection/nebula-collection"],
                 Permission: [
                   "aoss:DescribeCollectionItems",
                   "aoss:CreateCollectionItems",
@@ -262,7 +260,7 @@ export class Kb1159Stack extends Stack {
                 ResourceType: "collection",
               },
               {
-                Resource: ["index/kb-collection-1159/*"],
+                Resource: ["index/nebula-collection/*"],
                 Permission: [
                   "aoss:UpdateIndex",
                   "aoss:DescribeIndex",
@@ -274,32 +272,31 @@ export class Kb1159Stack extends Stack {
               },
             ],
             Principal: [
-              `arn:aws:iam::${Aws.ACCOUNT_ID}:role/service-role/KbBedrockRole-1159`,
-              `arn:aws:iam::${Aws.ACCOUNT_ID}:role/service-role/KbCreateIndexRole-1159`,
-              `arn:aws:iam::${Aws.ACCOUNT_ID}:role/aws-reserved/sso.amazonaws.com/AWSReservedSSO_AWSAdministratorAccess_dd6fb7b2f244b79a`,
+              `arn:aws:iam::${Aws.ACCOUNT_ID}:role/service-role/NebulaBedrockRole`,
+              `arn:aws:iam::${Aws.ACCOUNT_ID}:role/service-role/NebulaCreateIndexRole`,
             ],
           },
         ]),
         type: "data",
         description: "Access policy for Knowledge Base Collection",
-        name: "kb-access-policy-1159",
+        name: "nebula-access-policy",
       }
     );
 
-    const kbCollectionDepencyGroup = new DependencyGroup();
-    kbCollectionDepencyGroup.add(kbCollectionEncryptionPolicy);
-    kbCollectionDepencyGroup.add(kbCollectionNetworkPolicy);
-    kbCollectionDepencyGroup.add(kbCollectionAccessPolicy);
+    const NebulaCollectionDepencyGroup = new DependencyGroup();
+    NebulaCollectionDepencyGroup.add(nebulaCollectionEncryptionPolicy);
+    NebulaCollectionDepencyGroup.add(nebulaCollectionNetworkPolicy);
+    NebulaCollectionDepencyGroup.add(nebulaCollectionAccessPolicy);
 
-    kbCollection.node.addDependency(kbCollectionDepencyGroup);
+    nebulaCollection.node.addDependency(NebulaCollectionDepencyGroup);
 
-    kbCollection.applyRemovalPolicy(RemovalPolicy.DESTROY);
+    nebulaCollection.applyRemovalPolicy(RemovalPolicy.DESTROY);
 
-    const kbCreateIndexPolicy = new iam.ManagedPolicy(
+    const nebulaCreateIndexPolicy = new iam.ManagedPolicy(
       this,
-      "KbCreateIndexPolicy",
+      "NebulaCreateIndexPolicy",
       {
-        managedPolicyName: "KbCreateIndexPolicy-1159",
+        managedPolicyName: "NebulaCreateIndexPolicy",
         path: "/service-role/",
         document: new iam.PolicyDocument({
           statements: [
@@ -315,53 +312,53 @@ export class Kb1159Stack extends Stack {
             }),
             new iam.PolicyStatement({
               actions: ["aoss:APIAccessAll"],
-              resources: [kbCollection.attrArn],
+              resources: [nebulaCollection.attrArn],
             }),
           ],
         }),
       }
     );
 
-    const kbCreateIndexRole = new iam.Role(this, "KbCreateIndexRole", {
-      roleName: "KbCreateIndexRole-1159",
+    const nebulaCreateIndexRole = new iam.Role(this, "NebulaCreateIndexRole", {
+      roleName: "NebulaCreateIndexRole",
       path: "/service-role/",
       assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
-      managedPolicies: [kbCreateIndexPolicy],
+      managedPolicies: [nebulaCreateIndexPolicy],
     });
 
-    const kbCreateIndexFunction = new lambda.Function(
+    const nebulaCreateIndexFunction = new lambda.Function(
       this,
-      "KbCreateIndexFunction",
+      "NebulaCreateIndexFunction",
       {
         runtime: lambda.Runtime.NODEJS_20_X,
         code: lambda.Code.fromBucket(
           publicBucket,
-          `kb-accelerator/${process.env.npm_package_version}/lambdas/create_index.zip`
+          `nebula/${process.env.npm_package_version}/lambdas/create_index.zip`
         ),
         handler: "create_index.handler",
-        functionName: "KbCreateIndexFunction-1159",
-        role: kbCreateIndexRole,
+        functionName: "NebulaCreateIndexFunction",
+        role: nebulaCreateIndexRole,
         environment: {
           REGION: `${Aws.REGION}`,
-          ENDPOINT: kbCollection.attrCollectionEndpoint,
+          ENDPOINT: nebulaCollection.attrCollectionEndpoint,
         },
         timeout: Duration.seconds(600),
       }
     );
 
-    const kbCreateIndexCr = new CustomResource(this, "KbCreateIndexCr", {
-      serviceToken: kbCreateIndexFunction.functionArn,
+    const nebulaCreateIndexCr = new CustomResource(this, "NebulaCreateIndexCr", {
+      serviceToken: nebulaCreateIndexFunction.functionArn,
       removalPolicy: RemovalPolicy.RETAIN,
     });
 
-    const kbBedrockPolicy = new iam.ManagedPolicy(this, "KbBedrockPolicy", {
-      managedPolicyName: "KbBedrockPolicy-1159",
+    const nebulaBedrockPolicy = new iam.ManagedPolicy(this, "NebulaBedrockPolicy", {
+      managedPolicyName: "NebulaBedrockPolicy",
       path: "/service-role/",
       document: new iam.PolicyDocument({
         statements: [
           new iam.PolicyStatement({
             actions: ["aoss:APIAccessAll"],
-            resources: [kbCollection.attrArn],
+            resources: [nebulaCollection.attrArn],
           }),
           new iam.PolicyStatement({
             actions: ["bedrock:InvokeModel"],
@@ -380,7 +377,7 @@ export class Kb1159Stack extends Stack {
           }),
           new iam.PolicyStatement({
             actions: ["s3:ListBucket", "s3:GetObject"],
-            resources: [kbDocsBucket.bucketArn, `${kbDocsBucket.bucketArn}/*`],
+            resources: [nebulaDocsBucket.bucketArn, `${nebulaDocsBucket.bucketArn}/*`],
           }),
           new iam.PolicyStatement({
             actions: [
@@ -395,58 +392,58 @@ export class Kb1159Stack extends Stack {
       }),
     });
 
-    const kbBedrockRole = new iam.Role(this, "KbBedrockRole", {
-      roleName: "KbBedrockRole-1159",
+    const nebulaBedrockRole = new iam.Role(this, "NebulaBedrockRole", {
+      roleName: "NebulaBedrockRole",
       path: "/service-role/",
       assumedBy: new iam.ServicePrincipal("bedrock.amazonaws.com"),
-      managedPolicies: [kbBedrockPolicy],
+      managedPolicies: [nebulaBedrockPolicy],
     });
 
-    const kb = new bedrock.CfnKnowledgeBase(this, "KB", {
+    const nebulaKb = new bedrock.CfnKnowledgeBase(this, "NebulaKB", {
       knowledgeBaseConfiguration: {
         type: "VECTOR",
         vectorKnowledgeBaseConfiguration: {
           embeddingModelArn: `arn:aws:bedrock:${Aws.REGION}::foundation-model/${embeddingModelParam.valueAsString}`,
         },
       },
-      name: "kb-1159",
-      roleArn: kbBedrockRole.roleArn,
+      name: "nebula-kb",
+      roleArn: nebulaBedrockRole.roleArn,
       storageConfiguration: {
         opensearchServerlessConfiguration: {
-          collectionArn: kbCollection.attrArn,
+          collectionArn: nebulaCollection.attrArn,
           fieldMapping: {
             metadataField: "BEDROCK_METADATA",
             textField: "BEDROCK_TEXT_CHUNK",
-            vectorField: "kb-vector-1159",
+            vectorField: "nebula-vector",
           },
-          vectorIndexName: "kb-index-1159",
+          vectorIndexName: "nebula-index",
         },
         type: "OPENSEARCH_SERVERLESS",
       },
     });
 
-    const kbDepencyGroup = new DependencyGroup();
-    kbDepencyGroup.add(kbCollection);
-    kbDepencyGroup.add(kbBedrockRole);
-    kbDepencyGroup.add(kbCreateIndexCr);
+    const nebulaDepencyGroup = new DependencyGroup();
+    nebulaDepencyGroup.add(nebulaCollection);
+    nebulaDepencyGroup.add(nebulaBedrockRole);
+    nebulaDepencyGroup.add(nebulaCreateIndexCr);
 
-    kb.node.addDependency(kbDepencyGroup);
+    nebulaKb.node.addDependency(nebulaDepencyGroup);
 
-    const kbDataSource = new bedrock.CfnDataSource(this, "KbDataSource", {
-      name: "kb-source-1159",
-      knowledgeBaseId: kb.attrKnowledgeBaseId,
+    const nebulaDataSource = new bedrock.CfnDataSource(this, "NebulaDataSource", {
+      name: "nebula-source",
+      knowledgeBaseId: nebulaKb.attrKnowledgeBaseId,
       dataDeletionPolicy: "DELETE",
       dataSourceConfiguration: {
         type: "S3",
         s3Configuration: {
-          bucketArn: kbDocsBucket.bucketArn,
+          bucketArn: nebulaDocsBucket.bucketArn,
           bucketOwnerAccountId: `${Aws.ACCOUNT_ID}`,
         },
       },
     });
 
-    const kbWebApiPolicy = new iam.ManagedPolicy(this, "KbWebApiPolicy", {
-      managedPolicyName: "KbWebApiPolicy-1159",
+    const nebulaWebApiPolicy = new iam.ManagedPolicy(this, "NebulaWebApiPolicy", {
+      managedPolicyName: "NebulaWebApiPolicy",
       path: "/service-role/",
       document: new iam.PolicyDocument({
         statements: [
@@ -460,7 +457,7 @@ export class Kb1159Stack extends Stack {
           }),
           new iam.PolicyStatement({
             actions: ["s3:ListBucket"],
-            resources: [kbDocsBucket.bucketArn],
+            resources: [nebulaDocsBucket.bucketArn],
           }),
           new iam.PolicyStatement({
             actions: [
@@ -468,7 +465,7 @@ export class Kb1159Stack extends Stack {
               "bedrock:GetKnowledgeBase",
               "bedrock:GetDataSource",
             ],
-            resources: [kb.attrKnowledgeBaseArn],
+            resources: [nebulaKb.attrKnowledgeBaseArn],
           }),
           new iam.PolicyStatement({
             actions: [
@@ -482,26 +479,26 @@ export class Kb1159Stack extends Stack {
       }),
     });
 
-    const kbWebApiRole = new iam.Role(this, "KbWebApiRole", {
-      roleName: "KbWebApiRole-1159",
+    const nebulaWebApiRole = new iam.Role(this, "NebulaWebApiRole", {
+      roleName: "NebulaWebApiRole",
       path: "/service-role/",
       assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
-      managedPolicies: [kbWebApiPolicy],
+      managedPolicies: [nebulaWebApiPolicy],
     });
 
-    const kbWebApiFunction = new lambda.Function(this, "KbWebApiFunction", {
+    const nebulaWebApiFunction = new lambda.Function(this, "NebulaWebApiFunction", {
       runtime: lambda.Runtime.NODEJS_20_X,
       code: lambda.Code.fromBucket(
         publicBucket,
-        `kb-accelerator/${process.env.npm_package_version}/lambdas/web_api.zip`
+        `nebula/${process.env.npm_package_version}/lambdas/web_api.zip`
       ),
       handler: "web_api.handler",
-      functionName: "KbWebApiFunction-1159",
-      role: kbWebApiRole,
+      functionName: "NebulaWebApiFunction",
+      role: nebulaWebApiRole,
       environment: {
-        DOCS_BUCKET: kbDocsBucket.bucketName,
-        KB_ID: kb.attrKnowledgeBaseId,
-        DATA_SOURCE_ID: kbDataSource.attrDataSourceId,
+        DOCS_BUCKET: nebulaDocsBucket.bucketName,
+        KB_ID: nebulaKb.attrKnowledgeBaseId,
+        DATA_SOURCE_ID: nebulaDataSource.attrDataSourceId,
         FOUNDATION_MODEL_ARN: `arn:aws:bedrock:${Aws.REGION}::foundation-model/${foundationModelParam.valueAsString}`,
         SOURCE_CHUNKS: "25",
         TEMPERATURE: "0.3",
@@ -511,20 +508,20 @@ export class Kb1159Stack extends Stack {
       timeout: Duration.seconds(30),
     });
 
-    kbWebApiFunction.applyRemovalPolicy(RemovalPolicy.DESTROY);
+    nebulaWebApiFunction.applyRemovalPolicy(RemovalPolicy.DESTROY);
 
-    const kbApiAuthorizer = new apigateway.CognitoUserPoolsAuthorizer(
+    const nebulaApiAuthorizer = new apigateway.CognitoUserPoolsAuthorizer(
       this,
-      "KbApiAuthorizer",
+      "NebulaApiAuthorizer",
       {
-        cognitoUserPools: [kbUserPool],
-        authorizerName: "KbAuthorizer-1159",
+        cognitoUserPools: [nebulaUserPool],
+        authorizerName: "NebulaAuthorizer",
       }
     );
 
-    const kbApi = new apigateway.LambdaRestApi(this, "KbApi", {
-      restApiName: "KbApi-1159",
-      handler: kbWebApiFunction,
+    const nebulaApi = new apigateway.LambdaRestApi(this, "NebulaApi", {
+      restApiName: "NebulaApi",
+      handler: nebulaWebApiFunction,
       retainDeployments: false,
       defaultCorsPreflightOptions: {
         allowOrigins: apigateway.Cors.ALL_ORIGINS,
@@ -532,25 +529,25 @@ export class Kb1159Stack extends Stack {
         allowHeaders: apigateway.Cors.DEFAULT_HEADERS,
       },
       defaultMethodOptions: {
-        authorizer: kbApiAuthorizer,
+        authorizer: nebulaApiAuthorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
       },
       deploy: false,
       proxy: true,
     });
 
-    kbApiAuthorizer._attachToApi(kbApi);
+    nebulaApiAuthorizer._attachToApi(nebulaApi);
 
-    const kbApiDeployment = new apigateway.Deployment(this, "KbApiDeployment", {
-      api: kbApi,
+    const nebulaApiDeployment = new apigateway.Deployment(this, "NebulaApiDeployment", {
+      api: nebulaApi,
     });
 
-    const kbApiStagee = new apigateway.Stage(this, "KbApiStage", {
-      deployment: kbApiDeployment,
+    const nebulaApiStagee = new apigateway.Stage(this, "NebulaApiStage", {
+      deployment: nebulaApiDeployment,
       stageName: "prod",
     });
 
-    kbApi.addGatewayResponse("KbApiUnauthorizedResponse", {
+    nebulaApi.addGatewayResponse("NebulaApiUnauthorizedResponse", {
       type: apigateway.ResponseType.UNAUTHORIZED,
       statusCode: "401",
       responseHeaders: {
@@ -564,11 +561,11 @@ export class Kb1159Stack extends Stack {
       },
     });
 
-    const kbSampleDataPolicy = new iam.ManagedPolicy(
+    const nebulaSampleDataPolicy = new iam.ManagedPolicy(
       this,
-      "KbSampleDataPolicy",
+      "NebulaSampleDataPolicy",
       {
-        managedPolicyName: "KbSampleDataPolicy-1159",
+        managedPolicyName: "NebulaSampleDataPolicy",
         path: "/service-role/",
         document: new iam.PolicyDocument({
           statements: [
@@ -591,87 +588,87 @@ export class Kb1159Stack extends Stack {
             }),
             new iam.PolicyStatement({
               actions: ["s3:PutObject"],
-              resources: [`${kbDocsBucket.bucketArn}/*`],
+              resources: [`${nebulaDocsBucket.bucketArn}/*`],
             }),
             new iam.PolicyStatement({
               actions: ["bedrock:StartIngestionJob"],
-              resources: [kb.attrKnowledgeBaseArn],
+              resources: [nebulaKb.attrKnowledgeBaseArn],
             }),
           ],
         }),
       }
     );
 
-    const kbSampleDataRole = new iam.Role(this, "KbSampleDataRole", {
-      roleName: "KbSampleDataRole-1159",
+    const nebulaSampleDataRole = new iam.Role(this, "NebulaSampleDataRole", {
+      roleName: "NebulaSampleDataRole",
       path: "/service-role/",
       assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
-      managedPolicies: [kbSampleDataPolicy],
+      managedPolicies: [nebulaSampleDataPolicy],
     });
 
-    const kbSampleDataFunction = new lambda.Function(
+    const nebulaSampleDataFunction = new lambda.Function(
       this,
-      "KbSampleDataFunction",
+      "NebulaSampleDataFunction",
       {
         runtime: lambda.Runtime.NODEJS_20_X,
         code: lambda.Code.fromBucket(
           publicBucket,
-          `kb-accelerator/${process.env.npm_package_version}/lambdas/sample_data.zip`
+          `nebula/${process.env.npm_package_version}/lambdas/sample_data.zip`
         ),
         handler: "sample_data.handler",
-        functionName: "KbSampleDataFunction-1159",
-        role: kbSampleDataRole,
+        functionName: "NebulaSampleDataFunction",
+        role: nebulaSampleDataRole,
         environment: {
           VERSION: `${process.env.npm_package_version}`,
-          DOCS_BUCKET: kbDocsBucket.bucketName,
-          KB_ID: kb.attrKnowledgeBaseId,
-          DATA_SOURCE_ID: kbDataSource.attrDataSourceId,
+          DOCS_BUCKET: nebulaDocsBucket.bucketName,
+          KB_ID: nebulaKb.attrKnowledgeBaseId,
+          DATA_SOURCE_ID: nebulaDataSource.attrDataSourceId,
           SOURCE_BUCKET: publicBucket.bucketName
         },
         timeout: Duration.seconds(120),
       }
     );
 
-    const kbSampleDataCr = new CustomResource(this, "KbSampleDataCr", {
-      serviceToken: kbSampleDataFunction.functionArn,
+    const nebulaSampleDataCr = new CustomResource(this, "NebulaSampleDataCr", {
+      serviceToken: nebulaSampleDataFunction.functionArn,
       removalPolicy: RemovalPolicy.RETAIN,
     });
 
-    const kbSampleDataCondition = new CfnCondition(
+    const nebulaSampleDataCondition = new CfnCondition(
       this,
-      "KbSampleDataCondition",
+      "NebulaSampleDataCondition",
       {
         expression: Fn.conditionEquals(uploadParam.valueAsString, "YES"),
       }
     );
 
-    const kbSampleDataPolicyCfn = kbSampleDataPolicy.node
+    const nebulaSampleDataPolicyCfn = nebulaSampleDataPolicy.node
       .defaultChild as iam.CfnManagedPolicy;
-    kbSampleDataPolicyCfn.cfnOptions.condition = kbSampleDataCondition;
+    nebulaSampleDataPolicyCfn.cfnOptions.condition = nebulaSampleDataCondition;
 
-    const kbSampleDataRoleCfn = kbSampleDataRole.node
+    const nebulaSampleDataRoleCfn = nebulaSampleDataRole.node
       .defaultChild as iam.CfnRole;
-    kbSampleDataRoleCfn.cfnOptions.condition = kbSampleDataCondition;
+    nebulaSampleDataRoleCfn.cfnOptions.condition = nebulaSampleDataCondition;
 
-    const kbSampleDataFunctionCfn = kbSampleDataFunction.node
+    const nebulaSampleDataFunctionCfn = nebulaSampleDataFunction.node
       .defaultChild as lambda.CfnFunction;
-    kbSampleDataFunctionCfn.cfnOptions.condition = kbSampleDataCondition;
+    nebulaSampleDataFunctionCfn.cfnOptions.condition = nebulaSampleDataCondition;
 
-    const kbSampleDataCrCfn = kbSampleDataCr.node
+    const nebulaSampleDataCrCfn = nebulaSampleDataCr.node
       .defaultChild as cloudformation.CfnCustomResource;
-    kbSampleDataCrCfn.cfnOptions.condition = kbSampleDataCondition;
+    nebulaSampleDataCrCfn.cfnOptions.condition = nebulaSampleDataCondition;
 
-    const kbOai = new cloudfront.OriginAccessIdentity(this, "KbOai");
+    const nebulaOai = new cloudfront.OriginAccessIdentity(this, "NebulaOai");
 
-    const kbDistro = new cloudfront.CloudFrontWebDistribution(
+    const nebulaDistro = new cloudfront.CloudFrontWebDistribution(
       this,
-      "KbDistro",
+      "NebulaDistro",
       {
         originConfigs: [
           {
             s3OriginSource: {
-              s3BucketSource: kbWebBucket,
-              originAccessIdentity: kbOai,
+              s3BucketSource: nebulaWebBucket,
+              originAccessIdentity: nebulaOai,
             },
             behaviors: [
               { isDefaultBehavior: true },
@@ -690,8 +687,8 @@ export class Kb1159Stack extends Stack {
       }
     );
 
-    const kbCopySitePolicy = new iam.ManagedPolicy(this, "KbCopySitePolicy", {
-      managedPolicyName: "KbCopySitePolicy-1159",
+    const nebulaCopySitePolicy = new iam.ManagedPolicy(this, "NebulaCopySitePolicy", {
+      managedPolicyName: "NebulaCopySitePolicy",
       path: "/service-role/",
       document: new iam.PolicyDocument({
         statements: [
@@ -711,7 +708,7 @@ export class Kb1159Stack extends Stack {
           }),
           new iam.PolicyStatement({
             actions: ["s3:PutObject"],
-            resources: [`${kbWebBucket.bucketArn}/*`],
+            resources: [`${nebulaWebBucket.bucketArn}/*`],
           }),
           new iam. PolicyStatement({
             actions: ["sns:Publish"],
@@ -721,42 +718,42 @@ export class Kb1159Stack extends Stack {
       }),
     });
 
-    const kbCopySiteRole = new iam.Role(this, "KbCopySiteRole", {
-      roleName: "KbCopySiteRole-1159",
+    const nebulaCopySiteRole = new iam.Role(this, "NebulaCopySiteRole", {
+      roleName: "NebulaCopySiteRole",
       path: "/service-role/",
       assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
-      managedPolicies: [kbCopySitePolicy],
+      managedPolicies: [nebulaCopySitePolicy],
     });
 
-    const kbCopySiteFunction = new lambda.Function(this, "KbCopySiteFunction", {
+    const nebulaCopySiteFunction = new lambda.Function(this, "NebulaCopySiteFunction", {
       runtime: lambda.Runtime.NODEJS_20_X,
       code: lambda.Code.fromBucket(
         publicBucket,
-        `kb-accelerator/${process.env.npm_package_version}/lambdas/copy_site.zip`
+        `nebula/${process.env.npm_package_version}/lambdas/copy_site.zip`
       ),
       handler: "copy_site.handler",
-      functionName: "KbCopySiteFunction-1159",
-      role: kbCopySiteRole,
+      functionName: "NebulaCopySiteFunction",
+      role: nebulaCopySiteRole,
       environment: {
         VERSION: `${process.env.npm_package_version}`,
-        WEB_BUCKET: kbWebBucket.bucketName,
-        API_URL: kbApiStagee.urlForPath(),
-        USER_POOL_ID: kbUserPool.userPoolId,
-        USER_POOL_CLIENT_ID: kbUserPoolClient.userPoolClientId,
+        WEB_BUCKET: nebulaWebBucket.bucketName,
+        API_URL: nebulaApiStagee.urlForPath(),
+        USER_POOL_ID: nebulaUserPool.userPoolId,
+        USER_POOL_CLIENT_ID: nebulaUserPoolClient.userPoolClientId,
         SOURCE_BUCKET: publicBucket.bucketName,
         USER_EMAIL: userEmailParam.valueAsString
       },
       timeout: Duration.seconds(120),
     });
 
-    const kbCopySiteCr = new CustomResource(this, "KbCopySiteCr", {
-      serviceToken: kbCopySiteFunction.functionArn,
+    const nebulaCopySiteCr = new CustomResource(this, "NebulaCopySiteCr", {
+      serviceToken: nebulaCopySiteFunction.functionArn,
       removalPolicy: RemovalPolicy.RETAIN,
     });
 
-    const kbDistoOutput = new CfnOutput(this, "WebUrl", {
+    const nebulaDistoOutput = new CfnOutput(this, "WebUrl", {
       description: "CloudFront Web URL for the demo application",
-      value: kbDistro.distributionDomainName,
+      value: nebulaDistro.distributionDomainName,
     });
   }
 }

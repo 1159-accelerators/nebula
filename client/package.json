@@ -1,8 +1,8 @@
 {
-  "name": "knowledgebase-demo",
+  "name": "nebula-client",
   "version": "0.0.1",
   "description": "Quickstart template for Gen AI on AWS",
-  "productName": "Knowledgebase Demo - 11:59",
+  "productName": "Nebula - 11:59",
   "author": "Justin Coker <justin.coker@1159.ai>",
   "private": true,
   "scripts": {

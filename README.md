@@ -1,5 +1,5 @@
-# 11:59 KB Demo
-Welcome to the 11:59 Knowledge Base Demo! This application offers an easy-to-use and responsive web interface that ensures a seamless user experience. 
+# Nebula Knowledge Base
+Welcome to the Nebula Knowledge Base Demo! This application offers an easy-to-use and responsive web interface that ensures a seamless user experience. 
 With deployment made simple through CloudFormation, you can get started in just a few clicks. Our application provides contextual chat capabilities to help you query and understand your enterprise documents effectively. 
 It is fully contained within your environment, ensuring that your data remains secure at all times.
 ## Overview
