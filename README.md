@@ -84,7 +84,7 @@ are located in the following files:
 - lib/nebula-stack.ts
 
 #### Build the App
-After you've installed the prerequisites, set your AWS profile, and created the source bucket you can simple run 
+After you've installed the prerequisites, set your AWS profile, and created the source bucket you can simply run 
 `npm run build` to build the application. This is a cascading command that kicks off multiple other tasks in the `package.json` file.
 1. Compiles the TypeScript lambdas using [esbuild](https://esbuild.github.io/)
 2. Compiles the Quasar client
@@ -93,4 +93,4 @@ After you've installed the prerequisites, set your AWS profile, and created the 
 5. Uploads the CF templates, client assets, lambdas, and sample data to the source bucket
 
 After the build is complete, you should find the final CloudFormation file in your source bucket 
-under `nebula/{version}/template.json`
+at `nebula/{version}/template.json`
