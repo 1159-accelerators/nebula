@@ -14,7 +14,7 @@ accelerators@1159.ai
 - US-WEST-2
 - CA-CENTRAL-1
 
-Once the stack creation is complete, the output `WebUrl` can be found in the Output tab with CloudFormation. Following this link should take you to the application 
+Once the stack creation is complete, the output `WebUrl` can be found in the Output tab within CloudFormation. Following this link should take you to the application 
 and you can login with the temporary password that was sent to the user email provided during deployment
 
 **Note: You must have access to the chosen models BEFORE deploying this application.** To gain access to the necessary models, please reference 
