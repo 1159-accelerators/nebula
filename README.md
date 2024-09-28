@@ -20,7 +20,7 @@ and you can login with the temporary password that was sent to the user email pr
 **Note: You must have access to the chosen models BEFORE deploying this application.** To gain access to the necessary models, please reference 
 [Manage access to Amazon Bedrock foundation models](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html) in the Bedrock User Guide  
 
-**[Deploy the Stack](https://console.aws.amazon.com/cloudformation/home?#/stacks/new?stackName=KB-Demo-1159&templateURL=https://1159-public-assets.s3.amazonaws.com/kb-accelerator/1.2.0/template.json)**
+**[Deploy the Stack](https://console.aws.amazon.com/cloudformation/home?#/stacks/new?stackName=Nebula-1159&templateURL=https://1159-public-assets.s3.amazonaws.com/nebula/1.3.0/template.json)**
 
 #### CloudFormation Parameters
 ##### User Email
