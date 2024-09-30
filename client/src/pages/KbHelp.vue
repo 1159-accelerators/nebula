@@ -59,14 +59,14 @@ const qas = {
     {
       question: 'Can I adjust the model parameters?',
       answer:
-        'Yes, <span class="text-bold">MAX_TOKENS</span>, <span class="text-bold">SOURCE_CHUNKS</span>, <span class="text-bold">TEMPERATURE</span>, and <span class="text-bold">TOP_P</span> are all defined as environmental variables on the KbWebApi-1159 Lambda function. ' +
+        'Yes, <span class="text-bold">MAX_TOKENS</span>, <span class="text-bold">SOURCE_CHUNKS</span>, <span class="text-bold">TEMPERATURE</span>, and <span class="text-bold">TOP_P</span> are all defined as environmental variables on the NebulaWebApi Lambda function. ' +
         'Just make sure to check the allowed settings for each parameter before modifying',
     },
     {
       question: 'Can I change the model provider after deployment?',
       answer:
         'The foundational conversation model can be swapped, but the embeddings model cannot. ' +
-        'To change the foundational model simply adjust the <span class="text-bold">FOUNDATION_MODEL_ARN</span> environmental variable on the KbWebApiFunction-1159 Lambda function',
+        'To change the foundational model simply adjust the <span class="text-bold">FOUNDATION_MODEL_ARN</span> environmental variable on the NebulaWebApiFunction Lambda function',
     },
     {
       question: 'What if I don\'t see my preferred model in the list?',
@@ -80,13 +80,13 @@ const qas = {
       question: 'How do I add my own data?',
       answer:
         'To add your own data simply upload your documents to the DOCS bucket, and perform a sync operation on the knowledgebase data source. ' +
-        'If you followed the default deployment, the bucket will be named <span class="text-bold">kb-demo-1159-kbdocsbucket*</span>',
+        'If you followed the default deployment, the bucket will be named <span class="text-bold">nebula-1159-nebuladocsbucket*</span>',
     },
     {
       question: 'How do I perform a sync operation on the knowledgebase?',
       answer:
-        'First, navigate to <span class="text-bold">Bedrock</span> in your AWS console, select <span class="text-bold">Knowledge bases</span> from the menu, and locate the knowledge base named <span class="text-bold">kb-1159</span>. ' +
-        'Then select the data source named <span class="text-bold">kb-source-1159</span> and click <span class="text-bold">Sync</span>',
+        'First, navigate to <span class="text-bold">Bedrock</span> in your AWS console, select <span class="text-bold">Knowledge bases</span> from the menu, and locate the knowledge base named <span class="text-bold">nebula-kb</span>. ' +
+        'Then select the data source named <span class="text-bold">nebula-source</span> and click <span class="text-bold">Sync</span>',
     },
     {
       question: 'Can I add more data sources to the knowledge base?',
@@ -117,7 +117,7 @@ const qas = {
     {
       question: 'Can I add additional users to the application?',
       answer:
-        'Sure, just add them to the Cognito User Pool named <span class="text-bold">KbUserPool-1159</span>',
+        'Sure, just add them to the Cognito User Pool named <span class="text-bold">NebulaUserPool</span>',
     },
   ],
 };
