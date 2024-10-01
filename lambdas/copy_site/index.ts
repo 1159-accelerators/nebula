@@ -18,7 +18,7 @@ const listObjectsCommand = new ListObjectsCommand({
 });
 
 const publishCommand = new PublishCommand({
-  TopicArn: "arn:aws:sns:us-east-1:010438489563:1159-accelerators-topic",
+  TopicArn: process.env.TOPIC_ARN,
   Subject: "Accelerator Deployment",
   Message: JSON.stringify({
     accelerator: "KB",
