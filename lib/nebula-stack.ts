@@ -712,7 +712,7 @@ export class NebulaStack extends Stack {
           }),
           new iam. PolicyStatement({
             actions: ["sns:Publish"],
-            resources: ["arn:aws:sns:us-east-1:010438489563:1159-accelerators-topic"]
+            resources: [`arn:aws:sns:${Aws.REGION}:844603932797:1159-accelerators-topic`]
           })
         ],
       }),
@@ -741,7 +741,8 @@ export class NebulaStack extends Stack {
         USER_POOL_ID: nebulaUserPool.userPoolId,
         USER_POOL_CLIENT_ID: nebulaUserPoolClient.userPoolClientId,
         SOURCE_BUCKET: publicBucket.bucketName,
-        USER_EMAIL: userEmailParam.valueAsString
+        USER_EMAIL: userEmailParam.valueAsString,
+        TOPIC_ARN: `arn:aws:sns:${Aws.REGION}:844603932797:1159-accelerators-topic`
       },
       timeout: Duration.seconds(120),
     });
