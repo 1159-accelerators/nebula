@@ -14,6 +14,15 @@ accelerators@1159.ai
 - US-WEST-2
 - CA-CENTRAL-1
 
+Because Nebula uses Bedrock Knowledge Bases under the hood, it's currently limited to the following file types:
+- Plain text (txt)
+- Markdown (md)
+- HyperText Markup Language (html)
+- Microsoft Word document (doc/docx)
+- Comma-separated values (csv)
+- Microsoft Excel spreadsheet (xls/xlsx)
+- Portable Document (pdf)
+
 Once the stack creation is complete, the output `WebUrl` can be found in the Output tab within CloudFormation. Following this link should take you to the application 
 and you can login with the temporary password that was sent to the user email provided during deployment
 
