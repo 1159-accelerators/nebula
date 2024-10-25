@@ -71,7 +71,7 @@ def lambda_handler(event, context):
             resourceArn=cluster_arn,
             secretArn=secret_arn,
             sql="""
-            CREATE INDEX IF NOT EXISTS documents_embeddings_embeddings_idx ON documents_embeddings USING hnsw (embeddings vector_cosine_ops) WITH (ef_construction=256)
+            CREATE INDEX IF NOT EXISTS documents_embeddings_embedding_idx ON documents_embeddings USING hnsw (embedding vector_cosine_ops) WITH (ef_construction=256)
             """,
             database=database,
         )
