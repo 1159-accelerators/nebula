@@ -829,7 +829,7 @@ export class NebulaStack extends Stack {
           }),
           new iam.PolicyStatement({
             actions: ["s3:PutObject"],
-            resources: [`${nebulaWebBucket.bucketArn}/*`],
+            resources: [`${nebulaWebBucket.bucketArn}/*`, `${extractBucket.attrArn}/*`],
           }),
           new iam.PolicyStatement({
             actions: ["sns:Publish"],
@@ -892,6 +892,21 @@ export class NebulaStack extends Stack {
       timeout: Duration.seconds(300),
     });
 
+    const extractTextFunction = new lambda.Function(this, "ExtractTextFunction", {
+      runtime: lambda.Runtime.PYTHON_3_12,
+      code: lambda.Code.fromBucket(
+        publicBucket,
+        `nebula/${process.env.npm_package_version}/lambdas/extract_text.zip`
+      ),
+      handler: "extract_text.lambda_handler",
+      functionName: "NebulaExtractTextFunction",
+      role: lambdaRole,
+      environment: {
+        EXTRACT_BUCKET: extractBucket.ref
+      },
+      timeout: Duration.seconds(600),
+    });
+
     // ! ======================================================================
     // ! Step Function components
     // ! State machine, policy, and role
@@ -914,6 +929,7 @@ export class NebulaStack extends Stack {
               resources: [
                 getFileTypeFunction.functionArn,
                 getSummaryFunction.functionArn,
+                extractTextFunction.functionArn
               ],
             }),
             new iam.PolicyStatement({
