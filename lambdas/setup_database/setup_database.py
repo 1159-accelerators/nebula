@@ -22,7 +22,7 @@ def lambda_handler(event, context):
         client.execute_statement(
             resourceArn=cluster_arn,
             secretArn=secret_arn,
-            sql='CREATE EXTENSION "vector"',
+            sql='CREATE EXTENSION IF NOT EXISTS "vector"',
             database=database,
         )
 
@@ -30,7 +30,7 @@ def lambda_handler(event, context):
         client.execute_statement(
             resourceArn=cluster_arn,
             secretArn=secret_arn,
-            sql='CREATE EXTENSION "uuid-ossp"',
+            sql='CREATE EXTENSION IF NOT EXISTS "uuid-ossp"',
             database=database,
         )
 
@@ -39,7 +39,7 @@ def lambda_handler(event, context):
             resourceArn=cluster_arn,
             secretArn=secret_arn,
             sql="""
-            create table documents (
+            CREATE TABLE IF NOT EXISTS documents (
               id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
               region VARCHAR(32) NOT NULL,
               bucket VARCHAR(1024) NOT NULL,
@@ -58,20 +58,32 @@ def lambda_handler(event, context):
             resourceArn=cluster_arn,
             secretArn=secret_arn,
             sql="""
-            create table documents_embeddings (
+            CREATE TABLE IF NOT EXISTS documents_embeddings (
               id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
               document_id UUID REFERENCES documents(id) ON DELETE CASCADE,
               embedding VECTOR(1024) NOT NULL
-            );
-
-            CREATE INDEX ON documents_embeddings USING hnsw (embeddings vector_cosine_ops) WITH (ef_construction=256);
+            )
+            """,
+            database=database,
+        )
+        logging.info("Creating index")
+        client.execute_statement(
+            resourceArn=cluster_arn,
+            secretArn=secret_arn,
+            sql="""
+            CREATE INDEX IF NOT EXISTS documents_embeddings_embeddings_idx ON documents_embeddings USING hnsw (embeddings vector_cosine_ops) WITH (ef_construction=256)
             """,
             database=database,
         )
 
         cfnresponse.send(event, context, cfnresponse.SUCCESS, {"Status": "Done"})
+        return
     except Exception as e:
         logger.error(f"An error occurred: {e}")
         cfnresponse.send(
-            event, context, cfnresponse.FAILED, {"Status": "Error", "Message": e}
+            event,
+            context,
+            cfnresponse.FAILED,
+            {"Status": "Error", "Message": "Something went wrong"},
         )
+        raise
