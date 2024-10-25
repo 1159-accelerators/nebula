@@ -10,3 +10,4 @@ cdk.out
 dist
 client/public/config.json
 lambdas/extract_text/pypandoc/files/pandoc
+lambdas/*/*/*
