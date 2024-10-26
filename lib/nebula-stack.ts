@@ -829,7 +829,10 @@ export class NebulaStack extends Stack {
           }),
           new iam.PolicyStatement({
             actions: ["s3:PutObject"],
-            resources: [`${nebulaWebBucket.bucketArn}/*`, `${extractBucket.attrArn}/*`],
+            resources: [
+              `${nebulaWebBucket.bucketArn}/*`,
+              `${extractBucket.attrArn}/*`,
+            ],
           }),
           new iam.PolicyStatement({
             actions: ["sns:Publish"],
@@ -876,36 +879,44 @@ export class NebulaStack extends Stack {
       timeout: Duration.seconds(120),
     });
 
-    const createEmbeddingsFunction = new lambda.Function(this, "CreateEmbeddingsFunction", {
-      runtime: lambda.Runtime.PYTHON_3_12,
-      code: lambda.Code.fromBucket(
-        publicBucket,
-        `nebula/${process.env.npm_package_version}/lambdas/create_embeddings.zip`
-      ),
-      handler: "create_embeddings.lambda_handler",
-      functionName: "NebulaCreateEmbeddingsFunction",
-      role: lambdaRole,
-      environment: {
-        REGION: `${Aws.REGION}`,
-        MODEL: embeddingModelParam.valueAsString,
-      },
-      timeout: Duration.seconds(300),
-    });
+    const createEmbeddingsFunction = new lambda.Function(
+      this,
+      "CreateEmbeddingsFunction",
+      {
+        runtime: lambda.Runtime.PYTHON_3_12,
+        code: lambda.Code.fromBucket(
+          publicBucket,
+          `nebula/${process.env.npm_package_version}/lambdas/create_embeddings.zip`
+        ),
+        handler: "create_embeddings.lambda_handler",
+        functionName: "NebulaCreateEmbeddingsFunction",
+        role: lambdaRole,
+        environment: {
+          REGION: `${Aws.REGION}`,
+          MODEL: embeddingModelParam.valueAsString,
+        },
+        timeout: Duration.seconds(300),
+      }
+    );
 
-    const extractTextFunction = new lambda.Function(this, "ExtractTextFunction", {
-      runtime: lambda.Runtime.PYTHON_3_12,
-      code: lambda.Code.fromBucket(
-        publicBucket,
-        `nebula/${process.env.npm_package_version}/lambdas/extract_text.zip`
-      ),
-      handler: "extract_text.lambda_handler",
-      functionName: "NebulaExtractTextFunction",
-      role: lambdaRole,
-      environment: {
-        EXTRACT_BUCKET: extractBucket.ref
-      },
-      timeout: Duration.seconds(600),
-    });
+    const extractPptxFunction = new lambda.Function(
+      this,
+      "ExtractPptxFunction",
+      {
+        runtime: lambda.Runtime.PYTHON_3_12,
+        code: lambda.Code.fromBucket(
+          publicBucket,
+          `nebula/${process.env.npm_package_version}/lambdas/extract_pptx.zip`
+        ),
+        handler: "extract_pptx.lambda_handler",
+        functionName: "NebulaExtractPptxFunction",
+        role: lambdaRole,
+        environment: {
+          EXTRACT_BUCKET: extractBucket.ref,
+        },
+        timeout: Duration.seconds(600),
+      }
+    );
 
     // ! ======================================================================
     // ! Step Function components
@@ -929,7 +940,7 @@ export class NebulaStack extends Stack {
               resources: [
                 getFileTypeFunction.functionArn,
                 getSummaryFunction.functionArn,
-                extractTextFunction.functionArn
+                extractPptxFunction.functionArn,
               ],
             }),
             new iam.PolicyStatement({
@@ -1027,32 +1038,66 @@ export class NebulaStack extends Stack {
             Next: "File Type Choice",
           },
           "File Type Choice": {
-            Type: "Choice",
             Choices: [
               {
+                Comment: "Matches on images",
+                Next: "Get Summary",
                 Or: [
                   {
-                    Variable: "$.fileType.ext",
                     StringMatches: "png",
+                    Variable: "$.fileType.ext",
                   },
                   {
-                    Variable: "$.fileType.ext",
                     StringMatches: "jpg",
+                    Variable: "$.fileType.ext",
                   },
                   {
-                    Variable: "$.fileType.ext",
                     StringMatches: "gif",
+                    Variable: "$.fileType.ext",
                   },
                   {
-                    Variable: "$.fileType.ext",
                     StringMatches: "webp",
+                    Variable: "$.fileType.ext",
                   },
                 ],
-                Next: "Get Summary",
-                Comment: "Matches on images",
+              },
+              {
+                Variable: "$.fileType.ext",
+                StringMatches: "pptx",
+                Comment: "PPTX",
+                Next: "Extract PPTX",
               },
             ],
             Default: "Success (1)",
+            Type: "Choice",
+          },
+          "Extract PPTX": {
+            Type: "Task",
+            Resource: "arn:aws:states:::lambda:invoke",
+            OutputPath: "$.Payload",
+            Parameters: {
+              FunctionName:
+                extractPptxFunction.functionArn,
+              Payload: {
+                "bucket.$": "$.doc.bucket",
+                "key.$": "$.doc.key",
+                "id.$": "$.dbRecord.id.StringValue",
+              },
+            },
+            Retry: [
+              {
+                ErrorEquals: [
+                  "Lambda.ServiceException",
+                  "Lambda.AWSLambdaException",
+                  "Lambda.SdkClientException",
+                  "Lambda.TooManyRequestsException",
+                ],
+                IntervalSeconds: 1,
+                MaxAttempts: 3,
+                BackoffRate: 2,
+              },
+            ],
+            End: true,
           },
           "Get Summary": {
             Type: "Task",

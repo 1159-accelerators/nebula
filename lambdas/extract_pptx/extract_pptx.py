@@ -1,7 +1,7 @@
 import boto3
 import os
 from pptx import Presentation
-from io import StringIO
+from io import BytesIO
 from aws_lambda_powertools import Logger
 from aws_lambda_powertools.utilities.typing import LambdaContext
 
@@ -29,7 +29,7 @@ def lambda_handler(event, context: LambdaContext):
     """
     try:
         doc: dict = s3_client.get_object(Bucket=bucket, Key=key)
-        doc_data: StringIO = StringIO(doc["Body"].read())
+        doc_data: BytesIO = BytesIO(doc["Body"].read())
     except Exception as e:
         logger.error(f"Could get object: {e}")
         raise
@@ -55,7 +55,10 @@ def lambda_handler(event, context: LambdaContext):
     except Exception as e:
         logger.error(f"Could not extract text from presentation: {e}")
         raise
-
+    """
+    Saves the extract text to the extract bucket
+    File is named to match the UUID from the documents table
+    """
     try:
         bytes = text.encode("utf-8")
         s3_client.put_object(Body=bytes, Bucket=extract_bucket, Key=id)
