@@ -1,41 +1,37 @@
-import filetype
-import boto3
-import logging
+from aws_lambda_powertools import Logger
+from aws_lambda_powertools.utilities.typing import LambdaContext
 
-logger = logging.getLogger()
-logger.setLevel("INFO")
+logger = Logger()
 
-client = boto3.client("s3")
+mime_types: dict[str, str] = {
+    "gif": "image/gif",
+    "jpg": "image/jpeg",
+    "jpeg": "image/jpeg",
+    "png": "image/png",
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+}
 
 
-def lambda_handler(event, context):
-    bucket: str = event["bucket"]
-    key: str = event["key"]
+@logger.inject_lambda_context
+def lambda_handler(event, context: LambdaContext):
 
-    response: dict = {"mime": None, "ext": None}
-
-    logger.info("Retrieving document")
+    response: dict = {"mime": "unknown", "ext": "unknown"}
 
     try:
-        doc: dict = client.get_object(Bucket=bucket, Key=key)
-
-        magic_header = doc["Body"].read(amt=261)
-    except Exception as e:
-        logger.error(f"Could not retrieve document: {e}")
-        raise
+        key: str = event["key"]
+        ext: str = key.rsplit(".", 1)[1]
+    except:
+        logger.error(f"Could not find the file's extension")
+        return response
 
     logger.info("Getting file type")
 
-    try:
-        kind = filetype.guess(magic_header)
-        if kind is None:
-            logger.warning("Could not get file type")
-            return response
+    ext = ext.lower()
 
-        response["ext"] = kind.extension
-        response["mime"] = kind.mime
-    except Exception as e:
-        logger.error(f"An error occurred getting file type: {e}")
-        raise
-    
+    if ext in [key for key in mime_types]:
+        response["ext"] = ext
+        response["mime"] = mime_types[ext]
+
+    print(response)
     return response

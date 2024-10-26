@@ -180,9 +180,9 @@ export class NebulaStack extends Stack {
           },
         ],
       },
-      versioningConfiguration: {
-        status: "Enabled",
-      },
+      // versioningConfiguration: {
+      //   status: "Enabled",
+      // },
       notificationConfiguration: {
         eventBridgeConfiguration: {
           eventBridgeEnabled: true,
@@ -860,7 +860,7 @@ export class NebulaStack extends Stack {
         handler: "get_file_type.lambda_handler",
         functionName: "NebulaGetFileTypeFunction",
         role: lambdaRole,
-        timeout: Duration.seconds(120),
+        timeout: Duration.seconds(15),
       }
     );
 
