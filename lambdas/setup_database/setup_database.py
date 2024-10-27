@@ -44,7 +44,9 @@ def lambda_handler(event, context):
               region VARCHAR(32) NOT NULL,
               bucket VARCHAR(1024) NOT NULL,
               key VARCHAR(1024) NOT NULL,
+              name VARCHAR(1024) NOT NULL,
               mime VARCHAR(256),
+              size BIGINT NOT NULL,
               ext VARCHAR(32),
               summary TEXT,
               created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

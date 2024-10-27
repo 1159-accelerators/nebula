@@ -39,8 +39,6 @@ def lambda_handler(event, context: LambdaContext):
     """
     try:
         prs = Presentation(doc_data)
-        # text_runs will be populated with a list of strings,
-        # one for each text run in presentation
         text_array = []
 
         for slide in prs.slides:

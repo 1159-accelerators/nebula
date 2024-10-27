@@ -851,30 +851,26 @@ export class NebulaStack extends Stack {
       managedPolicies: [lambdaPolicy],
     });
 
-    const getFileTypeFunction = new lambda.Function(
-      this,
-      "GetFileTypeFunction",
-      {
-        runtime: lambda.Runtime.PYTHON_3_12,
-        code: lambda.Code.fromBucket(
-          publicBucket,
-          `nebula/${process.env.npm_package_version}/lambdas/get_file_type.zip`
-        ),
-        handler: "get_file_type.lambda_handler",
-        functionName: "NebulaGetFileTypeFunction",
-        role: lambdaRole,
-        timeout: Duration.seconds(15),
-      }
-    );
-
-    const getSummaryFunction = new lambda.Function(this, "GetSummaryFunction", {
+    const fileTypeFunction = new lambda.Function(this, "FileTypeFunction", {
       runtime: lambda.Runtime.PYTHON_3_12,
       code: lambda.Code.fromBucket(
         publicBucket,
-        `nebula/${process.env.npm_package_version}/lambdas/get_summary.zip`
+        `nebula/${process.env.npm_package_version}/lambdas/file_type.zip`
       ),
-      handler: "get_summary.lambda_handler",
-      functionName: "NebulaGetSummaryFunction",
+      handler: "file_type.lambda_handler",
+      functionName: "NebulaFileTypeFunction",
+      role: lambdaRole,
+      timeout: Duration.seconds(15),
+    });
+
+    const summaryFunction = new lambda.Function(this, "SummaryFunction", {
+      runtime: lambda.Runtime.PYTHON_3_12,
+      code: lambda.Code.fromBucket(
+        publicBucket,
+        `nebula/${process.env.npm_package_version}/lambdas/summary.zip`
+      ),
+      handler: "summary.lambda_handler",
+      functionName: "NebulaSummaryFunction",
       role: lambdaRole,
       timeout: Duration.seconds(120),
     });
@@ -938,8 +934,8 @@ export class NebulaStack extends Stack {
             new iam.PolicyStatement({
               actions: ["lambda:InvokeFunction"],
               resources: [
-                getFileTypeFunction.functionArn,
-                getSummaryFunction.functionArn,
+                fileTypeFunction.functionArn,
+                summaryFunction.functionArn,
                 extractPptxFunction.functionArn,
               ],
             }),
@@ -982,6 +978,10 @@ export class NebulaStack extends Stack {
                 "key.$": "$.detail.object.key",
                 "region.$": "$.region",
                 "time.$": "$.time",
+                "size.$": "$.detail.object.size",
+                "name.$":
+                  "States.ArrayGetItem(States.StringSplit($.detail.object.key, '/'), " +
+                  "States.MathAdd(States.ArrayLength(States.StringSplit($.detail.object.key, '/')), -1))",
               },
             },
           },
@@ -994,7 +994,7 @@ export class NebulaStack extends Stack {
             },
             ResultPath: "$.fileType",
             Parameters: {
-              FunctionName: getFileTypeFunction.functionArn,
+              FunctionName: fileTypeFunction.functionArn,
               Payload: {
                 "bucket.$": "$.doc.bucket",
                 "key.$": "$.doc.key",
@@ -1024,9 +1024,9 @@ export class NebulaStack extends Stack {
               SecretArn: nebulaDbCluster.attrMasterUserSecretSecretArn,
               "Sql.$":
                 "States.Format('INSERT INTO documents " +
-                "(region, bucket, key, mime, ext, created_at) " +
-                "VALUES (\\'{}\\', \\'{}\\', \\'{}\\', \\'{}\\', \\'{}\\', \\'{}\\') RETURNING id', " +
-                "$.doc.region, $.doc.bucket, $.doc.key, $.fileType.mime, $.fileType.ext, $.doc.time)",
+                "(region, bucket, key, mime, ext, created_at, size, name) " +
+                "VALUES (\\'{}\\', \\'{}\\', \\'{}\\', \\'{}\\', \\'{}\\', \\'{}\\', \\'{}\\', \\'{}\\') RETURNING id', " +
+                "$.doc.region, $.doc.bucket, $.doc.key, $.fileType.mime, $.fileType.ext, $.doc.time, $.doc.size, $.doc.name)",
               Database: "nebula",
             },
             Resource: "arn:aws:states:::aws-sdk:rdsdata:executeStatement",
@@ -1076,8 +1076,7 @@ export class NebulaStack extends Stack {
             Resource: "arn:aws:states:::lambda:invoke",
             OutputPath: "$.Payload",
             Parameters: {
-              FunctionName:
-                extractPptxFunction.functionArn,
+              FunctionName: extractPptxFunction.functionArn,
               Payload: {
                 "bucket.$": "$.doc.bucket",
                 "key.$": "$.doc.key",
@@ -1103,7 +1102,7 @@ export class NebulaStack extends Stack {
             Type: "Task",
             Resource: "arn:aws:states:::lambda:invoke",
             Parameters: {
-              FunctionName: getSummaryFunction.functionArn,
+              FunctionName: summaryFunction.functionArn,
               Payload: {
                 "bucket.$": "$.doc.bucket",
                 "key.$": "$.doc.key",
