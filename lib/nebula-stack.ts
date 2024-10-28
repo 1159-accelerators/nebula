@@ -199,26 +199,53 @@ export class NebulaStack extends Stack {
     docsBucket.cfnOptions.deletionPolicy = CfnDeletionPolicy.RETAIN;
     docsBucket.cfnOptions.updateReplacePolicy = CfnDeletionPolicy.RETAIN;
 
-    const extractBucket = new s3.CfnBucket(this, "ExtractBucket", {
-      bucketEncryption: {
-        serverSideEncryptionConfiguration: [
+    const docsBucketPolicy = new s3.CfnBucketPolicy(this, "DocsBucketPolicy", {
+      bucket: docsBucket.ref,
+      policyDocument: {
+        Statement: [
           {
-            serverSideEncryptionByDefault: {
-              sseAlgorithm: "AES256",
+            Action: "s3:*",
+            Condition: {
+              Bool: {
+                "aws:SecureTransport": "false",
+              },
             },
+            Effect: "Deny",
+            Principal: {
+              AWS: "*",
+            },
+            Resource: [docsBucket.attrArn, `${docsBucket.attrArn}/*`],
           },
         ],
       },
-      publicAccessBlockConfiguration: {
-        blockPublicAcls: true,
-        blockPublicPolicy: true,
-        ignorePublicAcls: true,
-        restrictPublicBuckets: true,
-      },
     });
 
-    extractBucket.cfnOptions.deletionPolicy = CfnDeletionPolicy.RETAIN;
-    extractBucket.cfnOptions.updateReplacePolicy = CfnDeletionPolicy.RETAIN;
+    const extractBucket = new s3.Bucket(this, "Extract", {
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      autoDeleteObjects: false,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      enforceSSL: true,
+      versioned: false,
+      removalPolicy: RemovalPolicy.RETAIN,
+    });
+
+    const thumbnailBucket = new s3.Bucket(this, "Thumbnail", {
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      autoDeleteObjects: false,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      enforceSSL: true,
+      versioned: false,
+      removalPolicy: RemovalPolicy.RETAIN,
+    });
+
+    const utilityBucket = new s3.Bucket(this, "Utility", {
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      autoDeleteObjects: false,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      enforceSSL: true,
+      versioned: false,
+      removalPolicy: RemovalPolicy.RETAIN,
+    });
 
     const corsRule: s3.CorsRule = {
       allowedMethods: [s3.HttpMethods.GET, s3.HttpMethods.HEAD],
@@ -831,7 +858,9 @@ export class NebulaStack extends Stack {
             actions: ["s3:PutObject"],
             resources: [
               `${nebulaWebBucket.bucketArn}/*`,
-              `${extractBucket.attrArn}/*`,
+              `${extractBucket.bucketArn}/*`,
+              `${thumbnailBucket.bucketArn}/*`,
+              `${utilityBucket.bucketArn}/*`,
             ],
           }),
           new iam.PolicyStatement({
@@ -908,11 +937,26 @@ export class NebulaStack extends Stack {
         functionName: "NebulaExtractPptxFunction",
         role: lambdaRole,
         environment: {
-          EXTRACT_BUCKET: extractBucket.ref,
+          EXTRACT_BUCKET: extractBucket.bucketName,
         },
         timeout: Duration.seconds(600),
       }
     );
+
+    const thumbnailFunction = new lambda.Function(this, "ThumbnailFunction", {
+      runtime: lambda.Runtime.PYTHON_3_12,
+      code: lambda.Code.fromBucket(
+        publicBucket,
+        `nebula/${process.env.npm_package_version}/lambdas/thumbnail.zip`
+      ),
+      handler: "thumbnail.lambda_handler",
+      functionName: "NebulaThumbnailFunction",
+      role: lambdaRole,
+      environment: {
+        THUMBNAIL_BUCKET: thumbnailBucket.bucketName,
+      },
+      timeout: Duration.seconds(600),
+    });
 
     // ! ======================================================================
     // ! Step Function components
@@ -937,6 +981,7 @@ export class NebulaStack extends Stack {
                 fileTypeFunction.functionArn,
                 summaryFunction.functionArn,
                 extractPptxFunction.functionArn,
+                thumbnailFunction.functionArn,
               ],
             }),
             new iam.PolicyStatement({
@@ -968,31 +1013,119 @@ export class NebulaStack extends Stack {
         Comment: "A description of my state machine",
         StartAt: "Filter Event Data",
         States: {
+          "Create Document Record": {
+            Comment:
+              "Inserts region, bucket, and key into the documents table. Returns UUID",
+            Next: "File Type Choice",
+            Parameters: {
+              Database: "nebula",
+              ResourceArn: nebulaDbCluster.attrDbClusterArn,
+              SecretArn: nebulaDbCluster.attrMasterUserSecretSecretArn,
+              "Sql.$":
+                "States.Format('INSERT INTO documents (region, bucket, key, mime, ext, created_at, size, name) VALUES ('{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}') RETURNING id', $.doc.region, $.doc.bucket, $.doc.key, $.fileType.mime, $.fileType.ext, $.doc.time, $.doc.size, $.doc.name)",
+            },
+            Resource: "arn:aws:states:::aws-sdk:rdsdata:executeStatement",
+            ResultPath: "$.dbRecord",
+            ResultSelector: {
+              "id.$":
+                "States.ArrayGetItem(States.ArrayGetItem($.Records, 0), 0)",
+            },
+            Type: "Task",
+          },
+          "File Type Choice": {
+            Choices: [
+              {
+                Or: [
+                  {
+                    Variable: "$.fileType.ext",
+                    StringMatches: "png",
+                  },
+                  {
+                    Variable: "$.fileType.ext",
+                    StringMatches: "jpg",
+                  },
+                  {
+                    Variable: "$.fileType.ext",
+                    StringMatches: "gif",
+                  },
+                  {
+                    Variable: "$.fileType.ext",
+                    StringMatches: "webp",
+                  },
+                  {
+                    Variable: "$.fileType.ext",
+                    StringMatches: "pdf",
+                  },
+                ],
+                Comment: "PDFs or Images",
+                Next: "Thumbnail",
+              },
+            ],
+            Default: "Success",
+            Type: "Choice",
+          },
+          Thumbnail: {
+            Type: "Task",
+            Resource: "arn:aws:states:::lambda:invoke",
+            Parameters: {
+              FunctionName: thumbnailFunction.functionArn,
+              Payload: {
+                "doc.$": "$.doc",
+                "id.$": "$.dbRecord.id.StringValue",
+                "fileType.$": "$.fileType",
+              },
+            },
+            Retry: [
+              {
+                ErrorEquals: [
+                  "Lambda.ServiceException",
+                  "Lambda.AWSLambdaException",
+                  "Lambda.SdkClientException",
+                  "Lambda.TooManyRequestsException",
+                ],
+                IntervalSeconds: 1,
+                MaxAttempts: 3,
+                BackoffRate: 2,
+              },
+            ],
+            ResultPath: null,
+            Next: "Process PDF?",
+          },
+          "Process PDF?": {
+            Type: "Choice",
+            Choices: [
+              {
+                Not: {
+                  Variable: "$.fileType.ext",
+                  StringMatches: "pdf",
+                },
+                Next: "Get Summary",
+                Comment: "Images",
+              },
+            ],
+            Default: "Success (1)",
+          },
+          "Success (1)": {
+            Type: "Succeed",
+          },
           "Filter Event Data": {
-            Type: "Pass",
             Comment: "Removes all but the region, bucket, and key",
             Next: "Get File Type",
             Parameters: {
               doc: {
                 "bucket.$": "$.detail.bucket.name",
                 "key.$": "$.detail.object.key",
-                "region.$": "$.region",
-                "time.$": "$.time",
-                "size.$": "$.detail.object.size",
                 "name.$":
-                  "States.ArrayGetItem(States.StringSplit($.detail.object.key, '/'), " +
-                  "States.MathAdd(States.ArrayLength(States.StringSplit($.detail.object.key, '/')), -1))",
+                  "States.ArrayGetItem(States.StringSplit($.detail.object.key, '/'), States.MathAdd(States.ArrayLength(States.StringSplit($.detail.object.key, '/')), -1))",
+                "region.$": "$.region",
+                "size.$": "$.detail.object.size",
+                "time.$": "$.time",
               },
             },
+            Type: "Pass",
           },
           "Get File Type": {
-            Type: "Task",
-            Resource: "arn:aws:states:::lambda:invoke",
-            ResultSelector: {
-              "ext.$": "$.Payload.ext",
-              "mime.$": "$.Payload.mime",
-            },
-            ResultPath: "$.fileType",
+            Next: "Create Document Record",
             Parameters: {
               FunctionName: fileTypeFunction.functionArn,
               Payload: {
@@ -1000,91 +1133,15 @@ export class NebulaStack extends Stack {
                 "key.$": "$.doc.key",
               },
             },
-            Retry: [
-              {
-                ErrorEquals: [
-                  "Lambda.ServiceException",
-                  "Lambda.AWSLambdaException",
-                  "Lambda.SdkClientException",
-                  "Lambda.TooManyRequestsException",
-                ],
-                IntervalSeconds: 1,
-                MaxAttempts: 3,
-                BackoffRate: 2,
-              },
-            ],
-            Next: "Create Document Record",
-          },
-          "Create Document Record": {
-            Type: "Task",
-            Comment:
-              "Inserts region, bucket, and key into the documents table. Returns UUID",
-            Parameters: {
-              ResourceArn: nebulaDbCluster.attrDbClusterArn,
-              SecretArn: nebulaDbCluster.attrMasterUserSecretSecretArn,
-              "Sql.$":
-                "States.Format('INSERT INTO documents " +
-                "(region, bucket, key, mime, ext, created_at, size, name) " +
-                "VALUES (\\'{}\\', \\'{}\\', \\'{}\\', \\'{}\\', \\'{}\\', \\'{}\\', \\'{}\\', \\'{}\\') RETURNING id', " +
-                "$.doc.region, $.doc.bucket, $.doc.key, $.fileType.mime, $.fileType.ext, $.doc.time, $.doc.size, $.doc.name)",
-              Database: "nebula",
-            },
-            Resource: "arn:aws:states:::aws-sdk:rdsdata:executeStatement",
-            ResultSelector: {
-              "id.$":
-                "States.ArrayGetItem(States.ArrayGetItem($.Records, 0), 0)",
-            },
-            ResultPath: "$.dbRecord",
-            Next: "File Type Choice",
-          },
-          "File Type Choice": {
-            Choices: [
-              {
-                Comment: "Matches on images",
-                Next: "Get Summary",
-                Or: [
-                  {
-                    StringMatches: "png",
-                    Variable: "$.fileType.ext",
-                  },
-                  {
-                    StringMatches: "jpg",
-                    Variable: "$.fileType.ext",
-                  },
-                  {
-                    StringMatches: "gif",
-                    Variable: "$.fileType.ext",
-                  },
-                  {
-                    StringMatches: "webp",
-                    Variable: "$.fileType.ext",
-                  },
-                ],
-              },
-              {
-                Variable: "$.fileType.ext",
-                StringMatches: "pptx",
-                Comment: "PPTX",
-                Next: "Extract PPTX",
-              },
-            ],
-            Default: "Success (1)",
-            Type: "Choice",
-          },
-          "Extract PPTX": {
-            Type: "Task",
             Resource: "arn:aws:states:::lambda:invoke",
-            OutputPath: "$.Payload",
-            Parameters: {
-              FunctionName: extractPptxFunction.functionArn,
-              Payload: {
-                "bucket.$": "$.doc.bucket",
-                "key.$": "$.doc.key",
-                "id.$": "$.dbRecord.id.StringValue",
-              },
+            ResultPath: "$.fileType",
+            ResultSelector: {
+              "ext.$": "$.Payload.ext",
+              "mime.$": "$.Payload.mime",
             },
             Retry: [
               {
+                BackoffRate: 2,
                 ErrorEquals: [
                   "Lambda.ServiceException",
                   "Lambda.AWSLambdaException",
@@ -1093,27 +1150,31 @@ export class NebulaStack extends Stack {
                 ],
                 IntervalSeconds: 1,
                 MaxAttempts: 3,
-                BackoffRate: 2,
               },
             ],
-            End: true,
+            Type: "Task",
           },
           "Get Summary": {
-            Type: "Task",
-            Resource: "arn:aws:states:::lambda:invoke",
+            Next: "Update Record with Summary",
             Parameters: {
               FunctionName: summaryFunction.functionArn,
               Payload: {
                 "bucket.$": "$.doc.bucket",
-                "key.$": "$.doc.key",
                 "ext.$": "$.fileType.ext",
+                "key.$": "$.doc.key",
                 "mime.$": "$.fileType.mime",
-                model_id: foundationModelParam.valueAsString,
+                model_id: "anthropic.claude-3-5-sonnet-20240620-v1:0",
                 prompt: "Describe this image",
               },
             },
+            Resource: "arn:aws:states:::lambda:invoke",
+            ResultPath: "$.getSummary",
+            ResultSelector: {
+              "content.$": "$.Payload",
+            },
             Retry: [
               {
+                BackoffRate: 2,
                 ErrorEquals: [
                   "Lambda.ServiceException",
                   "Lambda.AWSLambdaException",
@@ -1122,30 +1183,24 @@ export class NebulaStack extends Stack {
                 ],
                 IntervalSeconds: 1,
                 MaxAttempts: 3,
-                BackoffRate: 2,
               },
             ],
-            ResultSelector: {
-              "content.$": "$.Payload",
-            },
-            ResultPath: "$.getSummary",
-            Next: "Update Record with Summary",
+            Type: "Task",
+          },
+          Success: {
+            Type: "Succeed",
           },
           "Update Record with Summary": {
-            Type: "Task",
+            End: true,
             Parameters: {
               Database: "nebula",
-              ResourceArn: nebulaDbCluster.attrDbClusterArn,
+              ResourceArn: nebulaDbCluster,
               SecretArn: nebulaDbCluster.attrMasterUserSecretSecretArn,
               "Sql.$":
-                "States.Format('UPDATE documents SET summary = \\'{}\\' WHERE id = \\'{}\\'', " +
-                "$.getSummary.content, $.dbRecord.id.StringValue)",
+                "States.Format('UPDATE documents SET summary = '{}' WHERE id = '{}'', $.getSummary.content, $.dbRecord.id.StringValue)",
             },
             Resource: "arn:aws:states:::aws-sdk:rdsdata:executeStatement",
-            End: true,
-          },
-          "Success (1)": {
-            Type: "Succeed",
+            Type: "Task",
           },
         },
       },

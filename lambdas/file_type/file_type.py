@@ -9,6 +9,7 @@ mime_types: dict[str, str] = {
     "jpeg": "image/jpeg",
     "png": "image/png",
     "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "pdf": "application/pdf",
     "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 }
 

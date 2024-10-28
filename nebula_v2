@@ -1,0 +1,9 @@
+digraph "Nebula V2" {
+	graph [fontcolor="#2D3436" fontname="Sans-Serif" fontsize=15 label="Nebula V2" nodesep=0.60 pad=2.0 rankdir=LR ranksep=0.75 splines=ortho]
+	node [fixedsize=true fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13 height=1.4 imagescale=true labelloc=b shape=box style=rounded width=1.4]
+	edge [color="#7B8894"]
+	subgraph "cluster_Data Processing" {
+		graph [bgcolor="#E5F5FD" fontname="Sans-Serif" fontsize=12 label="Data Processing" labeljust=l pencolor="#AEB6BE" rankdir=LR shape=box style=rounded]
+		"137f6dd9aa0b4f07aadd483f79dc0f6c" [label="Docs Bucket" height=1.9 image="/Users/jcoker/.asdf/installs/python/3.12.3/lib/python3.12/site-packages/resources/aws/storage/simple-storage-service-s3.png" shape=none]
+	}
+}
