@@ -1194,7 +1194,7 @@ export class NebulaStack extends Stack {
             End: true,
             Parameters: {
               Database: "nebula",
-              ResourceArn: nebulaDbCluster,
+              ResourceArn: nebulaDbCluster.attrDbClusterArn,
               SecretArn: nebulaDbCluster.attrMasterUserSecretSecretArn,
               "Sql.$":
                 "States.Format('UPDATE documents SET summary = '{}' WHERE id = '{}'', $.getSummary.content, $.dbRecord.id.StringValue)",
