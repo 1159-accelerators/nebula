@@ -1,0 +1,4 @@
+aws-lambda-powertools==3.2.0
+pypdfium2==4.30.0
+boto3==1.35.50
+boto3-stubs[s3,rds-data,stepfunctions,textract]==1.35.50

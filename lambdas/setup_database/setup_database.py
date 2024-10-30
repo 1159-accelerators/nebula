@@ -49,6 +49,8 @@ def lambda_handler(event, context):
               size BIGINT NOT NULL,
               ext VARCHAR(32),
               summary TEXT,
+              extract_token VARCHAR(1024),
+              extract_status VARCHAR(32),
               created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """,

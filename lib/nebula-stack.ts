@@ -1,4 +1,5 @@
 import { Construct, DependencyGroup } from "constructs";
+import { SnsEventSource } from "aws-cdk-lib/aws-lambda-event-sources";
 import {
   RemovalPolicy,
   Stack,
@@ -20,6 +21,9 @@ import {
   aws_rds as rds,
   aws_events as events,
   aws_stepfunctions as sfn,
+  aws_sns as sns,
+  aws_sns_subscriptions as sns_subcriptions,
+  aws_stepfunctions_tasks as sfn_tasks,
   CustomResource,
   Fn,
   CfnCondition,
@@ -827,6 +831,44 @@ export class NebulaStack extends Stack {
       value: nebulaDistro.distributionDomainName,
     });
 
+    // ! ======================================================================
+    // ! SNS
+    // ! ======================================================================
+
+    const extractTopic = new sns.Topic(this, "ExtractTopic", {
+      topicName: `nebula-extract-${Aws.REGION}`,
+    });
+
+    // ! ======================================================================
+    // ! Textract
+    // ! Policy and role
+    // ! ======================================================================
+
+    const textractPolicy = new iam.ManagedPolicy(this, "textractPolicy", {
+      managedPolicyName: "NebulaTextractPolicy",
+      path: "/service-role/",
+      document: new iam.PolicyDocument({
+        statements: [
+          new iam.PolicyStatement({
+            actions: ["sns:Publish"],
+            resources: [extractTopic.topicArn],
+          }),
+        ],
+      }),
+    });
+
+    const textractRole = new iam.Role(this, "TextractRole", {
+      roleName: "NebulaTextractRole",
+      path: "/service-role/",
+      assumedBy: new iam.ServicePrincipal("textract.amazonaws.com"),
+      managedPolicies: [textractPolicy],
+    });
+
+    // ! ======================================================================
+    // ! Lambda
+    // ! Policy, role, and functions
+    // ! ======================================================================
+
     const lambdaPolicy = new iam.ManagedPolicy(this, "LambdaPolicy", {
       managedPolicyName: "NebulaLambdaPolicy",
       path: "/service-role/",
@@ -838,6 +880,12 @@ export class NebulaStack extends Stack {
               "logs:CreateLogStream",
               "logs:PutLogEvents",
               "bedrock:InvokeModel",
+              "states:SendTaskFailure",
+              "states:SendTaskSuccess",
+              "textract:DetectDocumentText",
+              "textract:StartDocumentTextDetection",
+              "textract:StartDocumentAnalysis",
+              "textract:GetDocumentTextDetection",
             ],
             resources: ["*"],
           }),
@@ -848,6 +896,10 @@ export class NebulaStack extends Stack {
               `${publicBucket.bucketArn}/*`,
               docsBucket.attrArn,
               `${docsBucket.attrArn}/*`,
+              utilityBucket.bucketArn,
+              `${utilityBucket.bucketArn}/*`,
+              extractBucket.bucketArn,
+              `${extractBucket.bucketArn}/*`
             ],
           }),
           new iam.PolicyStatement({
@@ -855,19 +907,24 @@ export class NebulaStack extends Stack {
             resources: [nebulaDbCluster.attrMasterUserSecretSecretArn],
           }),
           new iam.PolicyStatement({
-            actions: ["s3:PutObject"],
+            actions: ["s3:PutObject", "s3:DeleteObject"],
             resources: [
               `${nebulaWebBucket.bucketArn}/*`,
               `${extractBucket.bucketArn}/*`,
               `${thumbnailBucket.bucketArn}/*`,
               `${utilityBucket.bucketArn}/*`,
+              `${extractBucket.bucketArn}/*`
             ],
           }),
           new iam.PolicyStatement({
-            actions: ["sns:Publish"],
-            resources: [
-              `arn:aws:sns:${Aws.REGION}:844603932797:1159-accelerators-topic`,
+            actions: [
+              "rds-data:BatchExecuteStatement",
+              "rds-data:BeginTransaction",
+              "rds-data:CommitTransaction",
+              "rds-data:ExecuteStatement",
+              "rds-data:RollbackTransaction",
             ],
+            resources: [nebulaDbCluster.attrDbClusterArn],
           }),
         ],
       }),
@@ -902,6 +959,9 @@ export class NebulaStack extends Stack {
       functionName: "NebulaSummaryFunction",
       role: lambdaRole,
       timeout: Duration.seconds(120),
+      environment: {
+        MODEL_ID: "anthropic.claude-3-5-sonnet-20240620-v1:0",
+      },
     });
 
     const createEmbeddingsFunction = new lambda.Function(
@@ -958,6 +1018,34 @@ export class NebulaStack extends Stack {
       timeout: Duration.seconds(600),
     });
 
+    const extractFunction = new lambda.Function(this, "ExtractFunction", {
+      runtime: lambda.Runtime.PYTHON_3_12,
+      code: lambda.Code.fromBucket(
+        publicBucket,
+        `nebula/${process.env.npm_package_version}/lambdas/extract.zip`
+      ),
+      handler: "extract.lambda_handler",
+      functionName: "NebulaExtractFunction",
+      role: lambdaRole,
+      environment: {
+        CLUSTER_ARN: nebulaDbCluster.attrDbClusterArn,
+        SECRET_ARN: nebulaDbCluster.attrMasterUserSecretSecretArn,
+        UTILITY_BUCKET: utilityBucket.bucketName,
+        EXTRACT_BUCKET: extractBucket.bucketName,
+        TOPIC_ARN: extractTopic.topicArn,
+        ROLE_ARN: textractRole.roleArn,
+      },
+      timeout: Duration.seconds(600),
+    });
+
+    // ! ======================================================================
+    // ! SNS Subscriptions
+    // ! ======================================================================
+
+    extractTopic.addSubscription(
+      new sns_subcriptions.LambdaSubscription(extractFunction)
+    );
+
     // ! ======================================================================
     // ! Step Function components
     // ! State machine, policy, and role
@@ -982,6 +1070,7 @@ export class NebulaStack extends Stack {
                 summaryFunction.functionArn,
                 extractPptxFunction.functionArn,
                 thumbnailFunction.functionArn,
+                extractFunction.functionArn,
               ],
             }),
             new iam.PolicyStatement({
@@ -1010,7 +1099,7 @@ export class NebulaStack extends Stack {
       stateMachineName: "NebulaStateMachine",
       roleArn: stateMachineRole.roleArn,
       definition: {
-        Comment: "A description of my state machine",
+        Comment: "Performs processing on object creation",
         StartAt: "Filter Event Data",
         States: {
           "Create Document Record": {
@@ -1022,7 +1111,9 @@ export class NebulaStack extends Stack {
               ResourceArn: nebulaDbCluster.attrDbClusterArn,
               SecretArn: nebulaDbCluster.attrMasterUserSecretSecretArn,
               "Sql.$":
-                "States.Format('INSERT INTO documents (region, bucket, key, mime, ext, created_at, size, name) VALUES ('{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}') RETURNING id', $.doc.region, $.doc.bucket, $.doc.key, $.fileType.mime, $.fileType.ext, $.doc.time, $.doc.size, $.doc.name)",
+                "States.Format('INSERT INTO documents (region, bucket, key, mime, ext, created_at, size, name) " +
+                "VALUES (\\'{}\\', \\'{}\\', \\'{}\\', \\'{}\\', \\'{}\\', \\'{}\\', \\'{}\\', \\'{}\\') RETURNING id', " +
+                "$.doc.region, $.doc.bucket, $.doc.key, $.fileType.mime, $.fileType.ext, $.doc.time, $.doc.size, $.doc.name)",
             },
             Resource: "arn:aws:states:::aws-sdk:rdsdata:executeStatement",
             ResultPath: "$.dbRecord",
@@ -1088,7 +1179,10 @@ export class NebulaStack extends Stack {
                 BackoffRate: 2,
               },
             ],
-            ResultPath: null,
+            ResultSelector: {
+              "status.$": "$.Payload.status",
+            },
+            ResultPath: "$.thumbnail",
             Next: "Process PDF?",
           },
           "Process PDF?": {
@@ -1100,13 +1194,41 @@ export class NebulaStack extends Stack {
                   StringMatches: "pdf",
                 },
                 Next: "Get Summary",
-                Comment: "Images",
+                Comment: "NO",
               },
             ],
-            Default: "Success (1)",
+            Default: "Extract Text",
           },
           "Success (1)": {
             Type: "Succeed",
+          },
+          "Extract Text": {
+            Type: "Task",
+            Resource: "arn:aws:states:::lambda:invoke.waitForTaskToken",
+            "ResultPath": "$.extract",
+            Parameters: {
+              Payload: {
+                "taskToken.$": "$$.Task.Token",
+                "doc.$": "$.doc",
+                "fileType.$": "$.fileType",
+                "id.$": "$.dbRecord.id.StringValue",
+              },
+              FunctionName: extractFunction.functionArn,
+            },
+            Retry: [
+              {
+                ErrorEquals: [
+                  "Lambda.ServiceException",
+                  "Lambda.AWSLambdaException",
+                  "Lambda.SdkClientException",
+                  "Lambda.TooManyRequestsException",
+                ],
+                IntervalSeconds: 1,
+                MaxAttempts: 3,
+                BackoffRate: 2,
+              },
+            ],
+            Next: "Success (1)",
           },
           "Filter Event Data": {
             Comment: "Removes all but the region, bucket, and key",
@@ -1159,12 +1281,8 @@ export class NebulaStack extends Stack {
             Parameters: {
               FunctionName: summaryFunction.functionArn,
               Payload: {
-                "bucket.$": "$.doc.bucket",
-                "ext.$": "$.fileType.ext",
-                "key.$": "$.doc.key",
-                "mime.$": "$.fileType.mime",
-                model_id: "anthropic.claude-3-5-sonnet-20240620-v1:0",
-                prompt: "Describe this image",
+                "doc.$": "$.doc",
+                "fileType.$": "$.fileType",
               },
             },
             Resource: "arn:aws:states:::lambda:invoke",
@@ -1197,7 +1315,7 @@ export class NebulaStack extends Stack {
               ResourceArn: nebulaDbCluster.attrDbClusterArn,
               SecretArn: nebulaDbCluster.attrMasterUserSecretSecretArn,
               "Sql.$":
-                "States.Format('UPDATE documents SET summary = '{}' WHERE id = '{}'', $.getSummary.content, $.dbRecord.id.StringValue)",
+                "States.Format('UPDATE documents SET summary = \\'{}\\' WHERE id = \\'{}\\'', $.getSummary.content, $.dbRecord.id.StringValue)",
             },
             Resource: "arn:aws:states:::aws-sdk:rdsdata:executeStatement",
             Type: "Task",

@@ -1,29 +1,44 @@
-import base64
+from aws_lambda_powertools import Logger
+from aws_lambda_powertools.utilities.typing import LambdaContext
+from typing import Type
+import os
 import boto3
+import base64
 import json
-import logging
 
-logger = logging.getLogger()
-logger.setLevel("INFO")
+logger = Logger()
+
+s3_client = boto3.client("s3")
+
+MAX_SIZE = (512, 512)
 
 s3_client = boto3.client("s3")
 bedrock_client = boto3.client("bedrock-runtime")
 
 
-def lambda_handler(event, context):
-    bucket: str = event["bucket"]
-    key: str = event["key"]
-    mime: str = event["mime"]
-    ext: str = event["ext"]
-    prompt: str = event["prompt"]
-    model_id: str = event["model_id"]
+@logger.inject_lambda_context(log_event=True)
+def lambda_handler(event: dict, context: LambdaContext) -> str:
+    try:
+        bucket: str = event["doc"]["bucket"]
+        key: str = event["doc"]["key"]
+        mime: str = event["fileType"]["mime"]
+        ext: str = event["fileType"]["ext"]
+        model_id: str = os.environ["MODEL_ID"]
+
+    except Exception as e:
+        logger.error(f"Invalid event: {e}")
+        raise
+
+    response_body: str = ""
 
     if ext in ["png", "jpg", "gif", "webp"]:
+
+        prompt = "Describe this image."
         try:
             doc: dict = s3_client.get_object(Bucket=bucket, Key=key)
-            image_data = base64.b64encode(doc["Body"].read()).decode("utf-8")
+            image_data: str = base64.b64encode(doc["Body"].read()).decode("utf-8")
 
-            max_tokens = 1024
+            max_tokens: int = 1024
 
             message = {
                 "role": "user",
@@ -55,6 +70,8 @@ def lambda_handler(event, context):
             response_body = response_body["content"][0]["text"].replace("\n\n", " ")
             response_body = response_body.replace("'", "''")
 
-            return response_body
         except Exception as e:
             logger.error(f"Could not summarize image: {e}")
+            raise
+
+    return response_body

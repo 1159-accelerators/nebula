@@ -15,6 +15,9 @@ MAX_SIZE = (512, 512)
 
 @logger.inject_lambda_context(log_event=True)
 def lambda_handler(event, context: LambdaContext):
+    response = {
+        "status": "SUCCESS"
+    }
 
     image_bytes = BytesIO()
 
@@ -25,7 +28,7 @@ def lambda_handler(event, context: LambdaContext):
         ext: str = event["fileType"]["ext"]
         thumbnail_bucket: str = os.environ["THUMBNAIL_BUCKET"]
     except Exception as e:
-        logger.error(f"Could not extract text from presentation: {e}")
+        logger.error(f"Invalid event: {e}")
         raise
 
     logger.info("Getting S3 object")
@@ -58,4 +61,4 @@ def lambda_handler(event, context: LambdaContext):
         logger.error(f"Could not generate thumbnail: {e}")
         raise
 
-    return
+    return response

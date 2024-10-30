@@ -5,14 +5,13 @@
     "nebula": "bin/nebula.js"
   },
   "scripts": {
-    "prebuild": "rm -rf dist",
     "build": "npm run compile && npm run package && npm run synth && npm run upload",
     "compile": "npm run compile-web-api && npm run compile-copy-site && npm run compile-data && npm run compile-client",
     "compile-web-api": "esbuild lambdas/web_api/index.ts --bundle --minify --sourcemap --platform=node --target=es2020 --outfile=dist/web_api.js",
     "compile-copy-site": "esbuild lambdas/copy_site/index.ts --bundle --minify --sourcemap --platform=node --target=es2020 --outfile=dist/copy_site.js",
     "compile-data": "esbuild lambdas/sample_data/index.ts --bundle --minify --sourcemap --platform=node --target=es2020 --outfile=dist/sample_data.js",
     "compile-client": "npm run build --prefix client",
-    "package": "npm run pkg-api && npm run package-copy-site && npm run package-data && npm run pkg-setupdb && npm run pkg-filetype && npm run pkg-summary && npm run pkg-embed && npm run pkg-pptx && npm run pkg-thumb",
+    "package": "npm run pkg-api && npm run package-copy-site && npm run package-data && npm run pkg-setupdb && npm run pkg-filetype && npm run pkg-summary && npm run pkg-embed && npm run pkg-pptx && npm run pkg-thumb && npm run pkg-extract",
     "pkg-api": "zip -j dist/web_api.zip dist/web_api.js*",
     "package-copy-site": "zip -j dist/copy_site.zip dist/copy_site.js*",
     "package-data": "zip -j dist/sample_data.zip dist/sample_data.js*",
@@ -22,6 +21,7 @@
     "pkg-embed": "cd lambdas/create_embeddings && zip -FSr ../../dist/create_embeddings.zip * -x ./__pycache__/\\* && cd -",
     "pkg-pptx": "cd lambdas/extract_pptx && zip -FSr ../../dist/extract_pptx.zip * -x ./__pycache__/\\* && cd -",
     "pkg-thumb": "cd lambdas/thumbnail && zip -FSr ../../dist/thumbnail.zip * -x ./__pycache__/\\* && cd -",
+    "pkg-extract": "cd lambdas/extract && zip -FSr ../../dist/extract.zip * -x ./__pycache__/\\* && cd -",
     "synth": "cdk synth --quiet --path-metadata false --version-reporting false",
     "upload": "npm run upload-lambdas && npm run upload-site && npm run upload-iac && npm run upload-data",
     "upload-iac": "aws s3 cp cdk.out/NebulaStack.template.json s3://1159-public-assets/nebula/$npm_package_version/template.json --profile shared-services",
