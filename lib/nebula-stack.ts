@@ -964,21 +964,22 @@ export class NebulaStack extends Stack {
       },
     });
 
-    const createEmbeddingsFunction = new lambda.Function(
+    const embeddingsFunction = new lambda.Function(
       this,
-      "CreateEmbeddingsFunction",
+      "EmbeddingsFunction",
       {
         runtime: lambda.Runtime.PYTHON_3_12,
         code: lambda.Code.fromBucket(
           publicBucket,
-          `nebula/${process.env.npm_package_version}/lambdas/create_embeddings.zip`
+          `nebula/${process.env.npm_package_version}/lambdas/embeddings.zip`
         ),
-        handler: "create_embeddings.lambda_handler",
-        functionName: "NebulaCreateEmbeddingsFunction",
+        handler: "embeddings.lambda_handler",
+        functionName: "NebulaEmbeddingsFunction",
         role: lambdaRole,
         environment: {
-          REGION: `${Aws.REGION}`,
-          MODEL: embeddingModelParam.valueAsString,
+          MODEL_ID: embeddingModelParam.valueAsString,
+          CLUSTER_ARN: nebulaDbCluster.attrDbClusterArn,
+          SECRET_ARN: nebulaDbCluster.attrMasterUserSecretSecretArn
         },
         timeout: Duration.seconds(300),
       }
@@ -1071,6 +1072,7 @@ export class NebulaStack extends Stack {
                 extractPptxFunction.functionArn,
                 thumbnailFunction.functionArn,
                 extractFunction.functionArn,
+                embeddingsFunction.functionArn
               ],
             }),
             new iam.PolicyStatement({

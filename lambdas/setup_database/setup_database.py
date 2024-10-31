@@ -1,93 +1,109 @@
 import boto3
 import os
-import logging
 import cfnresponse
+from aws_lambda_powertools import Logger
+from aws_lambda_powertools.utilities.typing import LambdaContext
+from mypy_boto3_rds_data.client import RDSDataServiceClient
+from typing import Any
 
-logger = logging.getLogger()
-logger.setLevel("INFO")
+logger = Logger()
 
-secret_arn = os.environ["SECRET_ARN"]
-cluster_arn = os.environ["CLUSTER_ARN"]
-database = os.environ["DATABASE"]
+SECRET_ARN = os.environ["SECRET_ARN"]
+CLUSTER_ARN = os.environ["CLUSTER_ARN"]
+DATABASE = os.environ["DATABASE"]
 
-client = boto3.client("rds-data")
+client: RDSDataServiceClient = boto3.client("rds-data") # type: ignore
 
-
-def lambda_handler(event, context):
-    if event["RequestType"] == "Delete" or event["ResourceType"] == "Update":
-        cfnresponse.send(event, context, cfnresponse.SUCCESS, {"Status": "Done"})
-        return
+def execute_sql(sql: str) -> None:
+    """Execute a SQL statement using the RDS Data API."""
     try:
-        logging.info("Creating vector extension")
         client.execute_statement(
-            resourceArn=cluster_arn,
-            secretArn=secret_arn,
-            sql='CREATE EXTENSION IF NOT EXISTS "vector"',
-            database=database,
+            resourceArn=CLUSTER_ARN,
+            secretArn=SECRET_ARN,
+            sql=sql,
+            database=DATABASE,
         )
+    except Exception as e:
+        logger.error(f"Failed to execute SQL: {sql}")
+        raise e
 
-        logging.info("Creating uuid extension")
-        client.execute_statement(
-            resourceArn=cluster_arn,
-            secretArn=secret_arn,
-            sql='CREATE EXTENSION IF NOT EXISTS "uuid-ossp"',
-            database=database,
-        )
+def create_extensions() -> None:
+    """Create necessary database extensions."""
+    extensions = ["vector", "uuid-ossp"]
+    for ext in extensions:
+        logger.info(f"Creating {ext} extension")
+        execute_sql(f'CREATE EXTENSION IF NOT EXISTS "{ext}"')
 
-        logging.info("Creating documents table")
-        client.execute_statement(
-            resourceArn=cluster_arn,
-            secretArn=secret_arn,
-            sql="""
-            CREATE TABLE IF NOT EXISTS documents (
-              id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-              region VARCHAR(32) NOT NULL,
-              bucket VARCHAR(1024) NOT NULL,
-              key VARCHAR(1024) NOT NULL,
-              name VARCHAR(1024) NOT NULL,
-              mime VARCHAR(256),
-              size BIGINT NOT NULL,
-              ext VARCHAR(32),
-              summary TEXT,
-              extract_token VARCHAR(1024),
-              extract_status VARCHAR(32),
-              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-            """,
-            database=database,
-        )
+def create_documents_table() -> None:
+    """Create the documents table."""
+    logger.info("Creating documents table")
+    sql = """
+    CREATE TABLE IF NOT EXISTS documents (
+      id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+      region VARCHAR(32) NOT NULL,
+      bucket VARCHAR(1024) NOT NULL,
+      key VARCHAR(1024) NOT NULL,
+      name VARCHAR(1024) NOT NULL,
+      mime VARCHAR(256),
+      size BIGINT NOT NULL,
+      ext VARCHAR(32),
+      summary TEXT,
+      extract_token VARCHAR(1024),
+      extract_status VARCHAR(32),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """
+    execute_sql(sql)
 
-        logging.info("Creating embeddings table")
-        client.execute_statement(
-            resourceArn=cluster_arn,
-            secretArn=secret_arn,
-            sql="""
-            CREATE TABLE IF NOT EXISTS documents_embeddings (
-              id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-              document_id UUID REFERENCES documents(id) ON DELETE CASCADE,
-              embedding VECTOR(1024) NOT NULL
-            )
-            """,
-            database=database,
-        )
-        logging.info("Creating index")
-        client.execute_statement(
-            resourceArn=cluster_arn,
-            secretArn=secret_arn,
-            sql="""
-            CREATE INDEX IF NOT EXISTS documents_embeddings_embedding_idx ON documents_embeddings USING hnsw (embedding vector_cosine_ops) WITH (ef_construction=256)
-            """,
-            database=database,
-        )
+def create_embeddings_table() -> None:
+    """Create the documents_embeddings table and its index."""
+    logger.info("Creating embeddings table")
+    sql = """
+    CREATE TABLE IF NOT EXISTS documents_embeddings (
+      id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+      document_id UUID REFERENCES documents(id) ON DELETE CASCADE,
+      embedding VECTOR(1024) NOT NULL,
+      text TEXT NOT NULL
+    )
+    """
+    execute_sql(sql)
 
+    logger.info("Creating vector index")
+    sql = """
+    CREATE INDEX IF NOT EXISTS documents_embeddings_embedding_idx 
+    ON documents_embeddings USING hnsw (embedding vector_cosine_ops) 
+    WITH (ef_construction=256)
+    """
+    execute_sql(sql)
+
+    logger.info("Creating document_id index")
+    sql = """
+    CREATE INDEX IF NOT EXISTS documents_embeddings_document_id_idx 
+    ON documents_embeddings (document_id) 
+    """
+    execute_sql(sql)
+
+def setup_database() -> None:
+    """Set up the database by creating extensions and tables."""
+    create_extensions()
+    create_documents_table()
+    create_embeddings_table()
+
+@logger.inject_lambda_context(log_event=True)
+def lambda_handler(event: dict[str, Any], context: LambdaContext) -> None:
+    if event["RequestType"] in ["Delete", "Update"]:
         cfnresponse.send(event, context, cfnresponse.SUCCESS, {"Status": "Done"})
         return
+
+    try:
+        setup_database()
+        cfnresponse.send(event, context, cfnresponse.SUCCESS, {"Status": "Done"})
     except Exception as e:
         logger.error(f"An error occurred: {e}")
         cfnresponse.send(
             event,
             context,
             cfnresponse.FAILED,
-            {"Status": "Error", "Message": "Something went wrong"},
+            {"Status": "Error", "Message": str(e)},
         )
         raise

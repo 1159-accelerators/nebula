@@ -12,60 +12,33 @@ from diagrams.onprem.client import User
 from diagrams.programming.flowchart import Action, Decision, Delay, Document, Or
 from diagrams.programming.framework import Vue
 
-with Diagram("Nebula V2", outformat="png", filename="diagram"):
+with Diagram("Nebula V2 - Data Processing", outformat="png", filename="data-processing"):
 
     #! Storage
-    with Cluster("Storage"):
-      extract_bucket = S3("Extract Bucket")
-      thumb_bucket = S3("Thumbnails")
-      db = Aurora("PostgreSQL Serverless")
-      inbound_bucket = S3("Docs Bucket")
+    thumb_bucket = S3("Thumbnails")
+    db = Aurora("PostgreSQL\n(Aurora Serverless)")
+    
+    inbound_bucket = S3("Docs Bucket")
 
-    with Cluster("Web"):
-        user = User("User")
 
-        with Cluster("Client"):
-            client = Vue("Client")
-            auth = Cognito("Auth")
-            web_bucket = S3("Web Assets")
-            distro = CF("Web Distribution")
-
-            user >> client << distro >> web_bucket
-
-        with Cluster("API"):
-            api = APIGateway("API")
-            (
-                api
-                >> [
-                    LambdaFunction("/search"),
-                    LambdaFunction("/docs"),
-                    LambdaFunction("/chat"),
-                ]
-                >> db
-            )
-            client >> auth >> api
-
-    with Cluster("Data Processing"):
-        filter = Custom("Filter Data", "./icons/filter-outline.png")
+    with Cluster("Step Function"):
+        filter = Action("Filter Data")
         file_type = Lambda("Get File Type")
-        create_record = Custom("Save Record", "./icons/content-save-outline.png")
-        file_type_choice = Custom("File Type?", "./icons/call-split-custom.png")
+        create_record = Action("Create DB Record")
+        file_type_choice = Decision("File Type?")
+        thumb = Lambda("Generate Thumbnail")
+        convert = Lambda("Convert to PDF")
+        extract_choice = Decision("Extract Text?")
+        extract_start = Lambda("Start Text Extraction")
+        summary = Sagemaker("Get Summary")
+        save_summary = Action("Save Summary")
+        embeddings = Lambda("Generate Embeddings")
+        save_embeddings = Action("Save Embeddings")
 
-        with Cluster("Images"):
-            image_summary = Sagemaker("Create Summary")
-            image_thumb = Lambda("Create Thumbnail")
+    extract_text = Textract("Extract Text\n(Async)")
+    extract_topic = SNS("Notify on Finish")
 
-            image_summary >> db
-            image_thumb >> thumb_bucket
-
-        with Cluster("Office Files"):
-            office_convert = Lambda("LibreOffice")
-            office_extract = Lambda("Extract Text")
-            office_thumb = Lambda("Create Thumbnail")
-            office_summary = Sagemaker("Create Summary")
-
-            office_convert >> office_extract >> office_summary >> db
-            office_convert >> office_thumb >> thumb_bucket
+        
         
     
 
@@ -75,6 +48,13 @@ with Diagram("Nebula V2", outformat="png", filename="diagram"):
     #! Data Processing Flow
     inbound_bucket >> filter >> file_type >> create_record >> db
     create_record >> file_type_choice
-    file_type_choice >> [image_summary, image_thumb]
+    file_type_choice >> Edge(label="Images or PDFs") >> thumb
+    file_type_choice >> Edge(label="Office Files") >> convert >> thumb
+    thumb >> thumb_bucket
+    thumb >> extract_choice
+    extract_choice >> Edge(label="No") >> summary >> save_summary >> db
+    extract_choice >> Edge(label="Yes") >> extract_start >> extract_text >> extract_topic >> extract_start >> summary
+    save_summary >> embeddings >> save_embeddings >> db
+
 
     # Client Web Flow

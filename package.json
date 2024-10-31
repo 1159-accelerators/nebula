@@ -18,7 +18,7 @@
     "pkg-setupdb": "cd lambdas/setup_database && zip -FSr ../../dist/setup_database.zip * -x ./__pycache__/\\* && cd -",
     "pkg-filetype": "cd lambdas/file_type && zip -FSr ../../dist/file_type.zip * -x ./__pycache__/\\* && cd -",
     "pkg-summary": "cd lambdas/summary && zip -FSr ../../dist/summary.zip * -x ./__pycache__/\\* && cd -",
-    "pkg-embed": "cd lambdas/create_embeddings && zip -FSr ../../dist/create_embeddings.zip * -x ./__pycache__/\\* && cd -",
+    "pkg-embed": "cd lambdas/embeddings && zip -FSr ../../dist/embeddings.zip * -x ./__pycache__/\\* && cd -",
     "pkg-pptx": "cd lambdas/extract_pptx && zip -FSr ../../dist/extract_pptx.zip * -x ./__pycache__/\\* && cd -",
     "pkg-thumb": "cd lambdas/thumbnail && zip -FSr ../../dist/thumbnail.zip * -x ./__pycache__/\\* && cd -",
     "pkg-extract": "cd lambdas/extract && zip -FSr ../../dist/extract.zip * -x ./__pycache__/\\* && cd -",
