@@ -75,6 +75,8 @@ def handle_state_machine_event(
         save_extract_token(id, token, cluster_arn, secret_arn)
         start_textract_detection(id, bucket, key, utility_bucket, topic_arn, role_arn)
 
+    return
+
 
 def handle_sns_event(event: dict[str, Any], cluster_arn: str, secret_arn: str) -> None:
     """Handle SNS events."""

@@ -46,15 +46,15 @@ with Diagram("Nebula V2 - Data Processing", outformat="png", filename="data-proc
     #! Web Components
 
     #! Data Processing Flow
-    inbound_bucket >> filter >> file_type >> create_record >> db
-    create_record >> file_type_choice
-    file_type_choice >> Edge(label="Images or PDFs") >> thumb
-    file_type_choice >> Edge(label="Office Files") >> convert >> thumb
-    thumb >> thumb_bucket
-    thumb >> extract_choice
-    extract_choice >> Edge(label="No") >> summary >> save_summary >> db
-    extract_choice >> Edge(label="Yes") >> extract_start >> extract_text >> extract_topic >> extract_start >> summary
-    save_summary >> embeddings >> save_embeddings >> db
+    inbound_bucket >> filter >> file_type >> create_record >> db # type: ignore
+    create_record >> file_type_choice # type: ignore
+    file_type_choice >> Edge(label="Images or PDFs") >> thumb # type: ignore
+    file_type_choice >> Edge(label="Office Files") >> convert >> thumb # type: ignore
+    thumb >> thumb_bucket # type: ignore
+    thumb >> extract_choice # type: ignore
+    extract_choice >> Edge(label="No") >> summary >> save_summary >> db # type: ignore
+    extract_choice >> Edge(label="Yes") >> extract_start >> extract_text >> extract_topic >> extract_start >> summary # type: ignore
+    save_summary >> embeddings >> save_embeddings >> db # type: ignore
 
 
     # Client Web Flow

@@ -2,4 +2,6 @@ langchain-aws==0.2.4
 langchain-text-splitters==0.3.0
 aws-lambda-powertools==3.2.0
 boto3==1.35.50
-boto3-stubs[bedrock-runtime,rds-data,s3]==1.35.50
+boto3-stubs[bedrock-runtime,rds-data,s3,textract]==1.35.50
+amazon-textract-response-parser==1.0.3
+amazon-textract-caller==0.2.4

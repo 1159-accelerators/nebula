@@ -54,8 +54,6 @@ export class NebulaStack extends Stack {
       allowedValues: [
         "amazon.titan-embed-text-v1",
         "amazon.titan-embed-text-v2:0",
-        "cohere.embed-english-v3",
-        "cohere.embed-multilingual-v3",
       ],
     });
 
@@ -67,12 +65,9 @@ export class NebulaStack extends Stack {
         default: "anthropic.claude-3-5-sonnet-20240620-v1:0",
         description: "Base model for the conversational interface",
         allowedValues: [
-          "anthropic.claude-v2",
-          "anthropic.claude-v2:1",
           "anthropic.claude-3-sonnet-20240229-v1:0",
           "anthropic.claude-3-haiku-20240307-v1:0",
           "anthropic.claude-3-5-sonnet-20240620-v1:0",
-          "anthropic.claude-instant-v1",
         ],
       }
     );
@@ -456,6 +451,11 @@ export class NebulaStack extends Stack {
 
     nebulaSetupDatabaseCr.node.addDependency(nebulaDbInstance);
 
+    // ! ======================================================================
+    // ! Cognito Components
+    // ! User pool, identity pool, and policies
+    // ! ======================================================================
+
     const nebulaUserPool = new cognito.UserPool(this, "NebulaUserPool", {
       deletionProtection: false,
       mfa: cognito.Mfa.OFF,
@@ -489,22 +489,84 @@ export class NebulaStack extends Stack {
       username: userEmailParam.valueAsString,
     });
 
-    const nebulaUserPoolClient = nebulaUserPool.addClient(
-      "NebulaUserPoolClient",
-      {
-        authFlows: {
-          userSrp: true,
+    const userPoolClient = new cognito.UserPoolClient(this, "UserPoolClient", {
+      userPool: nebulaUserPool,
+      authFlows: { userSrp: true },
+      accessTokenValidity: Duration.minutes(180),
+      authSessionValidity: Duration.minutes(5),
+      enableTokenRevocation: true,
+      generateSecret: false,
+      idTokenValidity: Duration.minutes(180),
+      preventUserExistenceErrors: true,
+      refreshTokenValidity: Duration.days(30),
+      userPoolClientName: "web",
+    });
+
+    // const nebulaUserPoolClient = nebulaUserPool.addClient(
+    //   "NebulaUserPoolClient",
+    //   {
+    //     authFlows: {
+    //       userSrp: true,
+    //     },
+    //     accessTokenValidity: Duration.minutes(180),
+    //     authSessionValidity: Duration.minutes(5),
+    //     enableTokenRevocation: true,
+    //     generateSecret: false,
+    //     idTokenValidity: Duration.minutes(180),
+    //     preventUserExistenceErrors: true,
+    //     refreshTokenValidity: Duration.days(30),
+    //     userPoolClientName: "web",
+    //   }
+    // );
+
+    const identityPool = new cognito.CfnIdentityPool(this, "IdentityPool", {
+      cognitoIdentityProviders: [
+        {
+          clientId: userPoolClient.userPoolClientName,
+          providerName: nebulaUserPool.userPoolProviderName,
         },
-        accessTokenValidity: Duration.minutes(180),
-        authSessionValidity: Duration.minutes(5),
-        enableTokenRevocation: true,
-        generateSecret: false,
-        idTokenValidity: Duration.minutes(180),
-        preventUserExistenceErrors: true,
-        refreshTokenValidity: Duration.days(30),
-        userPoolClientName: "web",
-      }
-    );
+      ],
+      allowUnauthenticatedIdentities: false,
+      allowClassicFlow: false,
+      identityPoolName: "NebulaIdentityPool",
+    });
+
+    const userPolicy = new iam.ManagedPolicy(this, "UserPolicy", {
+      managedPolicyName: "NebulaUserPolicy",
+      path: "/service-role/",
+      document: new iam.PolicyDocument({
+        statements: [
+          new iam.PolicyStatement({
+            actions: ["cognito-identity:GetCredentialsForIdentity"],
+            resources: ["*"],
+          }),
+          new iam.PolicyStatement({
+            actions: ["s3:ListBucket"],
+            resources: [docsBucket.attrArn],
+          }),
+          new iam.PolicyStatement({
+            actions: ["s3:GetObject"],
+            resources: [`${docsBucket.attrArn}/*`],
+          }),
+        ],
+      }),
+    });
+
+    const userRole = new iam.Role(this, "UserRole", {
+      assumedBy: new iam.WebIdentityPrincipal(
+        "cognito-identity.amazonaws.com",
+        {
+          StringEquals: {
+            "cognito-identity.amazonaws.com:aud": `${identityPool.ref}`,
+          },
+          "ForAnyValue:StringLike": {
+            "cognito-identity.amazonaws.com:amr": "authenticated",
+          },
+        }
+      ),
+      managedPolicies: [userPolicy],
+      roleName: "NebulaUserRole",
+    });
 
     const nebulaWebApiPolicy = new iam.ManagedPolicy(
       this,
@@ -812,7 +874,7 @@ export class NebulaStack extends Stack {
           WEB_BUCKET: nebulaWebBucket.bucketName,
           API_URL: nebulaApiStagee.urlForPath(),
           USER_POOL_ID: nebulaUserPool.userPoolId,
-          USER_POOL_CLIENT_ID: nebulaUserPoolClient.userPoolClientId,
+          USER_POOL_CLIENT_ID: userPoolClient.userPoolClientId,
           SOURCE_BUCKET: publicBucket.bucketName,
           USER_EMAIL: userEmailParam.valueAsString,
           TOPIC_ARN: `arn:aws:sns:${Aws.REGION}:844603932797:1159-accelerators-topic`,
@@ -899,7 +961,7 @@ export class NebulaStack extends Stack {
               utilityBucket.bucketArn,
               `${utilityBucket.bucketArn}/*`,
               extractBucket.bucketArn,
-              `${extractBucket.bucketArn}/*`
+              `${extractBucket.bucketArn}/*`,
             ],
           }),
           new iam.PolicyStatement({
@@ -913,7 +975,7 @@ export class NebulaStack extends Stack {
               `${extractBucket.bucketArn}/*`,
               `${thumbnailBucket.bucketArn}/*`,
               `${utilityBucket.bucketArn}/*`,
-              `${extractBucket.bucketArn}/*`
+              `${extractBucket.bucketArn}/*`,
             ],
           }),
           new iam.PolicyStatement({
@@ -958,32 +1020,31 @@ export class NebulaStack extends Stack {
       handler: "summary.lambda_handler",
       functionName: "NebulaSummaryFunction",
       role: lambdaRole,
-      timeout: Duration.seconds(120),
+      timeout: Duration.seconds(300),
       environment: {
-        MODEL_ID: "anthropic.claude-3-5-sonnet-20240620-v1:0",
+        MODEL_ID: foundationModelParam.valueAsString,
+        CLUSTER_ARN: nebulaDbCluster.attrDbClusterArn,
+        SECRET_ARN: nebulaDbCluster.attrMasterUserSecretSecretArn
       },
     });
 
-    const embeddingsFunction = new lambda.Function(
-      this,
-      "EmbeddingsFunction",
-      {
-        runtime: lambda.Runtime.PYTHON_3_12,
-        code: lambda.Code.fromBucket(
-          publicBucket,
-          `nebula/${process.env.npm_package_version}/lambdas/embeddings.zip`
-        ),
-        handler: "embeddings.lambda_handler",
-        functionName: "NebulaEmbeddingsFunction",
-        role: lambdaRole,
-        environment: {
-          MODEL_ID: embeddingModelParam.valueAsString,
-          CLUSTER_ARN: nebulaDbCluster.attrDbClusterArn,
-          SECRET_ARN: nebulaDbCluster.attrMasterUserSecretSecretArn
-        },
-        timeout: Duration.seconds(300),
-      }
-    );
+    const embeddingsFunction = new lambda.Function(this, "EmbeddingsFunction", {
+      runtime: lambda.Runtime.PYTHON_3_12,
+      code: lambda.Code.fromBucket(
+        publicBucket,
+        `nebula/${process.env.npm_package_version}/lambdas/embeddings.zip`
+      ),
+      handler: "embeddings.lambda_handler",
+      functionName: "NebulaEmbeddingsFunction",
+      role: lambdaRole,
+      environment: {
+        MODEL_ID: embeddingModelParam.valueAsString,
+        CLUSTER_ARN: nebulaDbCluster.attrDbClusterArn,
+        SECRET_ARN: nebulaDbCluster.attrMasterUserSecretSecretArn,
+      },
+      timeout: Duration.seconds(900),
+      memorySize: 512,
+    });
 
     const extractPptxFunction = new lambda.Function(
       this,
@@ -1072,7 +1133,7 @@ export class NebulaStack extends Stack {
                 extractPptxFunction.functionArn,
                 thumbnailFunction.functionArn,
                 extractFunction.functionArn,
-                embeddingsFunction.functionArn
+                embeddingsFunction.functionArn,
               ],
             }),
             new iam.PolicyStatement({
@@ -1201,13 +1262,10 @@ export class NebulaStack extends Stack {
             ],
             Default: "Extract Text",
           },
-          "Success (1)": {
-            Type: "Succeed",
-          },
           "Extract Text": {
             Type: "Task",
             Resource: "arn:aws:states:::lambda:invoke.waitForTaskToken",
-            "ResultPath": "$.extract",
+            ResultPath: "$.textract",
             Parameters: {
               Payload: {
                 "taskToken.$": "$$.Task.Token",
@@ -1230,7 +1288,7 @@ export class NebulaStack extends Stack {
                 BackoffRate: 2,
               },
             ],
-            Next: "Success (1)",
+            Next: "Get Summary",
           },
           "Filter Event Data": {
             Comment: "Removes all but the region, bucket, and key",
@@ -1279,13 +1337,10 @@ export class NebulaStack extends Stack {
             Type: "Task",
           },
           "Get Summary": {
-            Next: "Update Record with Summary",
+            Next: "Embeddings",
             Parameters: {
               FunctionName: summaryFunction.functionArn,
-              Payload: {
-                "doc.$": "$.doc",
-                "fileType.$": "$.fileType",
-              },
+              "Payload.$": "$",
             },
             Resource: "arn:aws:states:::lambda:invoke",
             ResultPath: "$.getSummary",
@@ -1310,17 +1365,42 @@ export class NebulaStack extends Stack {
           Success: {
             Type: "Succeed",
           },
-          "Update Record with Summary": {
-            End: true,
-            Parameters: {
-              Database: "nebula",
-              ResourceArn: nebulaDbCluster.attrDbClusterArn,
-              SecretArn: nebulaDbCluster.attrMasterUserSecretSecretArn,
-              "Sql.$":
-                "States.Format('UPDATE documents SET summary = \\'{}\\' WHERE id = \\'{}\\'', $.getSummary.content, $.dbRecord.id.StringValue)",
-            },
-            Resource: "arn:aws:states:::aws-sdk:rdsdata:executeStatement",
+          // "Update Record with Summary": {
+          //   Next: "Embeddings",
+          //   Parameters: {
+          //     Database: "nebula",
+          //     ResourceArn: nebulaDbCluster.attrDbClusterArn,
+          //     SecretArn: nebulaDbCluster.attrMasterUserSecretSecretArn,
+          //     "Sql.$":
+          //       "States.Format('UPDATE documents SET summary = \\'{}\\' WHERE id = \\'{}\\'', $.getSummary.content, $.dbRecord.id.StringValue)",
+          //   },
+          //   Resource: "arn:aws:states:::aws-sdk:rdsdata:executeStatement",
+          //   Type: "Task",
+          //   ResultPath: "$.empty",
+          // },
+          Embeddings: {
             Type: "Task",
+            Resource: "arn:aws:states:::lambda:invoke",
+            OutputPath: "$.Payload",
+            Parameters: {
+              FunctionName:
+                "arn:aws:lambda:us-east-1:010438489563:function:NebulaEmbeddingsFunction",
+              "Payload.$": "$",
+            },
+            Retry: [
+              {
+                ErrorEquals: [
+                  "Lambda.ServiceException",
+                  "Lambda.AWSLambdaException",
+                  "Lambda.SdkClientException",
+                  "Lambda.TooManyRequestsException",
+                ],
+                IntervalSeconds: 1,
+                MaxAttempts: 3,
+                BackoffRate: 2,
+              },
+            ],
+            End: true,
           },
         },
       },
