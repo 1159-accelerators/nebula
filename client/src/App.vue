@@ -13,10 +13,15 @@
             </div>
           </template>
           <template v-slot:footer>
-            <div
-              class="q-pa-md text-center"
-            >
-            Visit our Website: <a class="text-primary text-bold" style="text-decoration: none;" href="https://1159.ai" target="_blank">1159.ai</a>
+            <div class="q-pa-md text-center">
+              Visit our Website:
+              <a
+                class="text-primary text-bold"
+                style="text-decoration: none"
+                href="https://1159.ai"
+                target="_blank"
+                >1159.ai</a
+              >
             </div>
           </template>
         </authenticator> </q-page

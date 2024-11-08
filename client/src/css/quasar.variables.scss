@@ -12,8 +12,8 @@
 // to match your app's branding.
 // Tip: Use the "Theme Builder" on Quasar's documentation website.
 
-$primary: #397f90;
-$secondary: #dfdedd;
+$primary: #6d0b43;
+$secondary: #f4a04a;
 $accent: #9c27b0;
 
 $dark: #1d1d1d;
@@ -26,3 +26,35 @@ $warning: #f2c037;
 
 $charcoal: #47545f;
 $gunmetal: #2a2d34;
+
+$grey: #f9fafb;
+$grey-1: #f3f4f6;
+$grey-2: #e5e7eb;
+$grey-3: #d1d5db;
+$grey-4: #9ca3af;
+$grey-5: #6b7280;
+$grey-6: #4b5563;
+$grey-7: #374151;
+$grey-8: #1f2937;
+$grey-9: #111827;
+$grey-10: #030712;
+
+$generic-border-radius: 6px;
+$button-border-radius: 6px;
+
+$text-weights: (
+  thin: 100,
+  light: 300,
+  regular: 400,
+  medium: 500,
+  semi: 600,
+  bold: 700,
+  bolder: 900,
+);
+$typography-font-family: 'Inter', '-apple-system', 'Helvetica Neue', Helvetica,
+  Arial, sans-serif;
+
+$table-th-font-size: 14px;
+$table-tbody-td-font-size: 14px;
+
+$separator-color: $grey-2;

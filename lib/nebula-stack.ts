@@ -36,6 +36,10 @@ export class NebulaStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
     super(scope, id, { ...props, analyticsReporting: false });
 
+    // ! ======================================================================
+    // ! Parameters
+    // ! ======================================================================
+
     const userEmailParam = new CfnParameter(this, "UserEmailParam", {
       type: "String",
       noEcho: false,
@@ -54,6 +58,18 @@ export class NebulaStack extends Stack {
       allowedValues: [
         "amazon.titan-embed-text-v1",
         "amazon.titan-embed-text-v2:0",
+      ],
+    });
+
+    const summarizationModelParam = new CfnParameter(this, "SummarizationModelParam", {
+      type: "String",
+      default: "anthropic.claude-3-sonnet-20240229-v1:0",
+      description:
+        "This model will be used to create summaries of documents and images",
+      allowedValues: [
+        "anthropic.claude-3-sonnet-20240229-v1:0",
+        "anthropic.claude-3-haiku-20240307-v1:0",
+        "anthropic.claude-3-5-sonnet-20240620-v1:0",
       ],
     });
 
@@ -110,6 +126,10 @@ export class NebulaStack extends Stack {
       }
     );
 
+    // ! ======================================================================
+    // ! Metadata
+    // ! ======================================================================
+
     this.templateOptions.metadata = {
       "AWS::CloudFormation::Interface": {
         ParameterGroups: [
@@ -129,6 +149,7 @@ export class NebulaStack extends Stack {
             Label: { default: "Models" },
             Parameters: [
               embeddingModelParam.logicalId,
+              summarizationModelParam.logicalId,
               foundationModelParam.logicalId,
             ],
           },
@@ -152,8 +173,11 @@ export class NebulaStack extends Stack {
           [embeddingModelParam.logicalId]: {
             default: "Embedding Model",
           },
+          [summarizationModelParam.logicalId]: {
+            default: "Summarization Model",
+          },
           [foundationModelParam.logicalId]: {
-            default: "Foundation Model",
+            default: "Conversation Model",
           },
         },
       },
@@ -169,7 +193,7 @@ export class NebulaStack extends Stack {
       `arn:aws:s3:::1159-public-assets-${Aws.REGION}`
     );
 
-    const docsBucket = new s3.CfnBucket(this, "DocsBucket", {
+    const docsBucket = new s3.CfnBucket(this, "Docs", {
       bucketEncryption: {
         serverSideEncryptionConfiguration: [
           {
@@ -198,6 +222,7 @@ export class NebulaStack extends Stack {
     docsBucket.cfnOptions.deletionPolicy = CfnDeletionPolicy.RETAIN;
     docsBucket.cfnOptions.updateReplacePolicy = CfnDeletionPolicy.RETAIN;
 
+    //! Enforces SSL for the Document Bucket
     const docsBucketPolicy = new s3.CfnBucketPolicy(this, "DocsBucketPolicy", {
       bucket: docsBucket.ref,
       policyDocument: {
@@ -228,15 +253,6 @@ export class NebulaStack extends Stack {
       removalPolicy: RemovalPolicy.RETAIN,
     });
 
-    const thumbnailBucket = new s3.Bucket(this, "Thumbnail", {
-      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-      autoDeleteObjects: false,
-      encryption: s3.BucketEncryption.S3_MANAGED,
-      enforceSSL: true,
-      versioned: false,
-      removalPolicy: RemovalPolicy.RETAIN,
-    });
-
     const utilityBucket = new s3.Bucket(this, "Utility", {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       autoDeleteObjects: false,
@@ -253,7 +269,7 @@ export class NebulaStack extends Stack {
       maxAge: 300,
     };
 
-    const nebulaWebBucket = new s3.Bucket(this, "NebulaWebBucket", {
+    const webBucket = new s3.Bucket(this, "Web", {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       autoDeleteObjects: false,
       encryption: s3.BucketEncryption.S3_MANAGED,
@@ -263,15 +279,19 @@ export class NebulaStack extends Stack {
       cors: [corsRule],
     });
 
-    // Networking Config
-    // const nebulaIgw = new ec2.CfnInternetGateway(this, "NebulaIgw", {
-    //   tags: [
-    //     {
-    //       key: "Name",
-    //       value: "nebula-IGW",
-    //     },
-    //   ],
-    // });
+    const thumbnailBucket = new s3.Bucket(this, "Thumbnail", {
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      autoDeleteObjects: false,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      enforceSSL: true,
+      versioned: false,
+      removalPolicy: RemovalPolicy.RETAIN,
+      cors: [corsRule]
+    });
+
+    // ! ======================================================================
+    // ! Networking
+    // ! ======================================================================
 
     const nebulaVpc = new ec2.CfnVPC(this, "NebulaVpc", {
       enableDnsHostnames: true,
@@ -373,84 +393,6 @@ export class NebulaStack extends Stack {
     nebulaDbCluster.node.addDependency(nebulaDbSubnetGroup);
     nebulaDbInstance.node.addDependency(nebulaDbCluster);
 
-    const nebulaSetupDatabasePolicy = new iam.ManagedPolicy(
-      this,
-      "NebulaSetupDatabasePolicy",
-      {
-        managedPolicyName: "NebulaSetupDatabasePolicy",
-        path: "/service-role/",
-        document: new iam.PolicyDocument({
-          statements: [
-            new iam.PolicyStatement({
-              actions: [
-                "logs:CreateLogGroup",
-                "logs:CreateLogStream",
-                "logs:PutLogEvents",
-              ],
-              resources: ["*"],
-            }),
-            new iam.PolicyStatement({
-              actions: ["secretsmanager:GetSecretValue"],
-              resources: [nebulaDbCluster.attrMasterUserSecretSecretArn],
-            }),
-            new iam.PolicyStatement({
-              actions: [
-                "rds-data:BatchExecuteStatement",
-                "rds-data:BeginTransaction",
-                "rds-data:CommitTransaction",
-                "rds-data:ExecuteStatement",
-                "rds-data:RollbackTransaction",
-              ],
-              resources: [nebulaDbCluster.attrDbClusterArn],
-            }),
-          ],
-        }),
-      }
-    );
-
-    const nebulaSetupDatabaseRole = new iam.Role(
-      this,
-      "NebulaSetupDatabaseRole",
-      {
-        roleName: "NebulaSetupDatabaseRole",
-        path: "/service-role/",
-        assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
-        managedPolicies: [nebulaSetupDatabasePolicy],
-      }
-    );
-
-    const nebulaSetupDatabaseFunction = new lambda.Function(
-      this,
-      "NebulaSetupDatabaseFunction",
-      {
-        runtime: lambda.Runtime.PYTHON_3_12,
-        code: lambda.Code.fromBucket(
-          publicBucket,
-          `nebula/${process.env.npm_package_version}/lambdas/setup_database.zip`
-        ),
-        handler: "setup_database.lambda_handler",
-        functionName: "NebulaSetupDatabaseFunction",
-        role: nebulaSetupDatabaseRole,
-        environment: {
-          DATABASE: "nebula",
-          SECRET_ARN: nebulaDbCluster.attrMasterUserSecretSecretArn,
-          CLUSTER_ARN: nebulaDbCluster.attrDbClusterArn,
-        },
-        timeout: Duration.seconds(300),
-      }
-    );
-
-    const nebulaSetupDatabaseCr = new CustomResource(
-      this,
-      "NebulaSetupDatabaseCr",
-      {
-        serviceToken: nebulaSetupDatabaseFunction.functionArn,
-        removalPolicy: RemovalPolicy.RETAIN,
-      }
-    );
-
-    nebulaSetupDatabaseCr.node.addDependency(nebulaDbInstance);
-
     // ! ======================================================================
     // ! Cognito Components
     // ! User pool, identity pool, and policies
@@ -522,7 +464,7 @@ export class NebulaStack extends Stack {
     const identityPool = new cognito.CfnIdentityPool(this, "IdentityPool", {
       cognitoIdentityProviders: [
         {
-          clientId: userPoolClient.userPoolClientName,
+          clientId: userPoolClient.userPoolClientId,
           providerName: nebulaUserPool.userPoolProviderName,
         },
       ],
@@ -557,7 +499,7 @@ export class NebulaStack extends Stack {
         "cognito-identity.amazonaws.com",
         {
           StringEquals: {
-            "cognito-identity.amazonaws.com:aud": `${identityPool.ref}`,
+            "cognito-identity.amazonaws.com:aud": identityPool.ref,
           },
           "ForAnyValue:StringLike": {
             "cognito-identity.amazonaws.com:amr": "authenticated",
@@ -568,330 +510,16 @@ export class NebulaStack extends Stack {
       roleName: "NebulaUserRole",
     });
 
-    const nebulaWebApiPolicy = new iam.ManagedPolicy(
+    const userRoleAttachment = new cognito.CfnIdentityPoolRoleAttachment(
       this,
-      "NebulaWebApiPolicy",
+      "UserRoleAttachment",
       {
-        managedPolicyName: "NebulaWebApiPolicy",
-        path: "/service-role/",
-        document: new iam.PolicyDocument({
-          statements: [
-            new iam.PolicyStatement({
-              actions: [
-                "logs:CreateLogGroup",
-                "logs:CreateLogStream",
-                "logs:PutLogEvents",
-              ],
-              resources: ["*"],
-            }),
-            new iam.PolicyStatement({
-              actions: ["s3:ListBucket"],
-              resources: [docsBucket.attrArn],
-            }),
-            new iam.PolicyStatement({
-              actions: [
-                "bedrock:RetrieveAndGenerate",
-                "bedrock:Retrieve",
-                "bedrock:InvokeModel",
-              ],
-              resources: ["*"],
-            }),
-          ],
-        }),
-      }
-    );
-
-    const nebulaWebApiRole = new iam.Role(this, "NebulaWebApiRole", {
-      roleName: "NebulaWebApiRole",
-      path: "/service-role/",
-      assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
-      managedPolicies: [nebulaWebApiPolicy],
-    });
-
-    const nebulaWebApiFunction = new lambda.Function(
-      this,
-      "NebulaWebApiFunction",
-      {
-        runtime: lambda.Runtime.NODEJS_20_X,
-        code: lambda.Code.fromBucket(
-          publicBucket,
-          `nebula/${process.env.npm_package_version}/lambdas/web_api.zip`
-        ),
-        handler: "web_api.handler",
-        functionName: "NebulaWebApiFunction",
-        role: nebulaWebApiRole,
-        environment: {
-          DOCS_BUCKET: docsBucket.ref,
-          FOUNDATION_MODEL_ARN: `arn:aws:bedrock:${Aws.REGION}::foundation-model/${foundationModelParam.valueAsString}`,
-          SOURCE_CHUNKS: "25",
-          TEMPERATURE: "0.3",
-          TOP_P: "0.9",
-          MAX_TOKENS: "2048",
+        identityPoolId: identityPool.ref,
+        roles: {
+          authenticated: userRole.roleArn,
         },
-        timeout: Duration.seconds(30),
       }
     );
-
-    nebulaWebApiFunction.applyRemovalPolicy(RemovalPolicy.DESTROY);
-
-    const nebulaApiAuthorizer = new apigateway.CognitoUserPoolsAuthorizer(
-      this,
-      "NebulaApiAuthorizer",
-      {
-        cognitoUserPools: [nebulaUserPool],
-        authorizerName: "NebulaAuthorizer",
-      }
-    );
-
-    const nebulaApi = new apigateway.LambdaRestApi(this, "NebulaApi", {
-      restApiName: "NebulaApi",
-      handler: nebulaWebApiFunction,
-      retainDeployments: false,
-      defaultCorsPreflightOptions: {
-        allowOrigins: apigateway.Cors.ALL_ORIGINS,
-        allowMethods: apigateway.Cors.ALL_METHODS,
-        allowHeaders: apigateway.Cors.DEFAULT_HEADERS,
-      },
-      defaultMethodOptions: {
-        authorizer: nebulaApiAuthorizer,
-        authorizationType: apigateway.AuthorizationType.COGNITO,
-      },
-      deploy: false,
-      proxy: true,
-    });
-
-    nebulaApiAuthorizer._attachToApi(nebulaApi);
-
-    const nebulaApiDeployment = new apigateway.Deployment(
-      this,
-      "NebulaApiDeployment",
-      {
-        api: nebulaApi,
-      }
-    );
-
-    const nebulaApiStagee = new apigateway.Stage(this, "NebulaApiStage", {
-      deployment: nebulaApiDeployment,
-      stageName: "prod",
-    });
-
-    nebulaApi.addGatewayResponse("NebulaApiUnauthorizedResponse", {
-      type: apigateway.ResponseType.UNAUTHORIZED,
-      statusCode: "401",
-      responseHeaders: {
-        "Access-Control-Allow-Origin": "'*'",
-        "Access-Control-Allow-Methods": "'*'",
-        "Access-Control-Allow-Headers": "'Content-Type, Authorization'",
-        //"Access-Control-Allow-Credentials": 'true'
-      },
-      templates: {
-        "application/json": '{"message":$context.error.messageString}',
-      },
-    });
-
-    const nebulaSampleDataPolicy = new iam.ManagedPolicy(
-      this,
-      "NebulaSampleDataPolicy",
-      {
-        managedPolicyName: "NebulaSampleDataPolicy",
-        path: "/service-role/",
-        document: new iam.PolicyDocument({
-          statements: [
-            new iam.PolicyStatement({
-              actions: [
-                "logs:CreateLogGroup",
-                "logs:CreateLogStream",
-                "logs:PutLogEvents",
-                "cloudformation:SignalResource",
-                "cloudformation:DescribeStackResource",
-              ],
-              resources: ["*"],
-            }),
-            new iam.PolicyStatement({
-              actions: ["s3:ListBucket", "s3:GetObject"],
-              resources: [
-                publicBucket.bucketArn,
-                `${publicBucket.bucketArn}/*`,
-              ],
-            }),
-            new iam.PolicyStatement({
-              actions: ["s3:PutObject"],
-              resources: [`${docsBucket.attrArn}/*`],
-            }),
-          ],
-        }),
-      }
-    );
-
-    const nebulaSampleDataRole = new iam.Role(this, "NebulaSampleDataRole", {
-      roleName: "NebulaSampleDataRole",
-      path: "/service-role/",
-      assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
-      managedPolicies: [nebulaSampleDataPolicy],
-    });
-
-    const nebulaSampleDataFunction = new lambda.Function(
-      this,
-      "NebulaSampleDataFunction",
-      {
-        runtime: lambda.Runtime.NODEJS_20_X,
-        code: lambda.Code.fromBucket(
-          publicBucket,
-          `nebula/${process.env.npm_package_version}/lambdas/sample_data.zip`
-        ),
-        handler: "sample_data.handler",
-        functionName: "NebulaSampleDataFunction",
-        role: nebulaSampleDataRole,
-        environment: {
-          VERSION: `${process.env.npm_package_version}`,
-          DOCS_BUCKET: docsBucket.ref,
-          SOURCE_BUCKET: publicBucket.bucketName,
-        },
-        timeout: Duration.seconds(120),
-      }
-    );
-
-    const nebulaSampleDataCr = new CustomResource(this, "NebulaSampleDataCr", {
-      serviceToken: nebulaSampleDataFunction.functionArn,
-      removalPolicy: RemovalPolicy.RETAIN,
-    });
-
-    const nebulaSampleDataCondition = new CfnCondition(
-      this,
-      "NebulaSampleDataCondition",
-      {
-        expression: Fn.conditionEquals(uploadParam.valueAsString, "YES"),
-      }
-    );
-
-    const nebulaSampleDataPolicyCfn = nebulaSampleDataPolicy.node
-      .defaultChild as iam.CfnManagedPolicy;
-    nebulaSampleDataPolicyCfn.cfnOptions.condition = nebulaSampleDataCondition;
-
-    const nebulaSampleDataRoleCfn = nebulaSampleDataRole.node
-      .defaultChild as iam.CfnRole;
-    nebulaSampleDataRoleCfn.cfnOptions.condition = nebulaSampleDataCondition;
-
-    const nebulaSampleDataFunctionCfn = nebulaSampleDataFunction.node
-      .defaultChild as lambda.CfnFunction;
-    nebulaSampleDataFunctionCfn.cfnOptions.condition =
-      nebulaSampleDataCondition;
-
-    const nebulaSampleDataCrCfn = nebulaSampleDataCr.node
-      .defaultChild as cloudformation.CfnCustomResource;
-    nebulaSampleDataCrCfn.cfnOptions.condition = nebulaSampleDataCondition;
-
-    const nebulaOai = new cloudfront.OriginAccessIdentity(this, "NebulaOai");
-
-    const nebulaDistro = new cloudfront.CloudFrontWebDistribution(
-      this,
-      "NebulaDistro",
-      {
-        originConfigs: [
-          {
-            s3OriginSource: {
-              s3BucketSource: nebulaWebBucket,
-              originAccessIdentity: nebulaOai,
-            },
-            behaviors: [
-              { isDefaultBehavior: true },
-              {
-                allowedMethods: cloudfront.CloudFrontAllowedMethods.GET_HEAD,
-                pathPattern: "/*",
-              },
-            ],
-          },
-        ],
-        defaultRootObject: "index.html",
-        enabled: true,
-        httpVersion: cloudfront.HttpVersion.HTTP2_AND_3,
-        viewerCertificate:
-          cloudfront.ViewerCertificate.fromCloudFrontDefaultCertificate(),
-      }
-    );
-
-    const nebulaCopySitePolicy = new iam.ManagedPolicy(
-      this,
-      "NebulaCopySitePolicy",
-      {
-        managedPolicyName: "NebulaCopySitePolicy",
-        path: "/service-role/",
-        document: new iam.PolicyDocument({
-          statements: [
-            new iam.PolicyStatement({
-              actions: [
-                "logs:CreateLogGroup",
-                "logs:CreateLogStream",
-                "logs:PutLogEvents",
-                "cloudformation:SignalResource",
-                "cloudformation:DescribeStackResource",
-              ],
-              resources: ["*"],
-            }),
-            new iam.PolicyStatement({
-              actions: ["s3:ListBucket", "s3:GetObject"],
-              resources: [
-                publicBucket.bucketArn,
-                `${publicBucket.bucketArn}/*`,
-              ],
-            }),
-            new iam.PolicyStatement({
-              actions: ["s3:PutObject"],
-              resources: [`${nebulaWebBucket.bucketArn}/*`],
-            }),
-            new iam.PolicyStatement({
-              actions: ["sns:Publish"],
-              resources: [
-                `arn:aws:sns:${Aws.REGION}:844603932797:1159-accelerators-topic`,
-              ],
-            }),
-          ],
-        }),
-      }
-    );
-
-    const nebulaCopySiteRole = new iam.Role(this, "NebulaCopySiteRole", {
-      roleName: "NebulaCopySiteRole",
-      path: "/service-role/",
-      assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
-      managedPolicies: [nebulaCopySitePolicy],
-    });
-
-    const nebulaCopySiteFunction = new lambda.Function(
-      this,
-      "NebulaCopySiteFunction",
-      {
-        runtime: lambda.Runtime.NODEJS_20_X,
-        code: lambda.Code.fromBucket(
-          publicBucket,
-          `nebula/${process.env.npm_package_version}/lambdas/copy_site.zip`
-        ),
-        handler: "copy_site.handler",
-        functionName: "NebulaCopySiteFunction",
-        role: nebulaCopySiteRole,
-        environment: {
-          VERSION: `${process.env.npm_package_version}`,
-          WEB_BUCKET: nebulaWebBucket.bucketName,
-          API_URL: nebulaApiStagee.urlForPath(),
-          USER_POOL_ID: nebulaUserPool.userPoolId,
-          USER_POOL_CLIENT_ID: userPoolClient.userPoolClientId,
-          SOURCE_BUCKET: publicBucket.bucketName,
-          USER_EMAIL: userEmailParam.valueAsString,
-          TOPIC_ARN: `arn:aws:sns:${Aws.REGION}:844603932797:1159-accelerators-topic`,
-        },
-        timeout: Duration.seconds(120),
-      }
-    );
-
-    const nebulaCopySiteCr = new CustomResource(this, "NebulaCopySiteCr", {
-      serviceToken: nebulaCopySiteFunction.functionArn,
-      removalPolicy: RemovalPolicy.RETAIN,
-    });
-
-    const nebulaDistoOutput = new CfnOutput(this, "WebUrl", {
-      description: "CloudFront Web URL for the demo application",
-      value: nebulaDistro.distributionDomainName,
-    });
 
     // ! ======================================================================
     // ! SNS
@@ -942,6 +570,7 @@ export class NebulaStack extends Stack {
               "logs:CreateLogStream",
               "logs:PutLogEvents",
               "bedrock:InvokeModel",
+              "bedrock:Converse",
               "states:SendTaskFailure",
               "states:SendTaskSuccess",
               "textract:DetectDocumentText",
@@ -962,6 +591,7 @@ export class NebulaStack extends Stack {
               `${utilityBucket.bucketArn}/*`,
               extractBucket.bucketArn,
               `${extractBucket.bucketArn}/*`,
+              `${webBucket.bucketArn}/thumbnails/*`,
             ],
           }),
           new iam.PolicyStatement({
@@ -971,11 +601,12 @@ export class NebulaStack extends Stack {
           new iam.PolicyStatement({
             actions: ["s3:PutObject", "s3:DeleteObject"],
             resources: [
-              `${nebulaWebBucket.bucketArn}/*`,
+              `${webBucket.bucketArn}/*`,
               `${extractBucket.bucketArn}/*`,
               `${thumbnailBucket.bucketArn}/*`,
               `${utilityBucket.bucketArn}/*`,
               `${extractBucket.bucketArn}/*`,
+              `${docsBucket.attrArn}/*`,
             ],
           }),
           new iam.PolicyStatement({
@@ -988,6 +619,12 @@ export class NebulaStack extends Stack {
             ],
             resources: [nebulaDbCluster.attrDbClusterArn],
           }),
+          new iam.PolicyStatement({
+            actions: ["sns:Publish"],
+            resources: [
+              `arn:aws:sns:${Aws.REGION}:844603932797:1159-accelerators-topic`,
+            ],
+          }),
         ],
       }),
     });
@@ -997,6 +634,71 @@ export class NebulaStack extends Stack {
       path: "/service-role/",
       assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
       managedPolicies: [lambdaPolicy],
+    });
+
+    const webApiFunction = new lambda.Function(
+      this,
+      "WebApiFunction",
+      {
+        runtime: lambda.Runtime.NODEJS_20_X,
+        code: lambda.Code.fromBucket(
+          publicBucket,
+          `nebula/${process.env.npm_package_version}/lambdas/web_api.zip`
+        ),
+        handler: "web_api.handler",
+        functionName: "NebulaWebApiFunction",
+        role: lambdaRole,
+        environment: {
+          DOCS_BUCKET: docsBucket.ref,
+          FOUNDATION_MODEL_ARN: `arn:aws:bedrock:${Aws.REGION}::foundation-model/${foundationModelParam.valueAsString}`,
+          SOURCE_CHUNKS: "25",
+          TEMPERATURE: "0.3",
+          TOP_P: "0.9",
+          MAX_TOKENS: "2048",
+          CLUSTER_ARN: nebulaDbCluster.attrDbClusterArn,
+          SECRET_ARN: nebulaDbCluster.attrMasterUserSecretSecretArn,
+          POWERTOOLS_LOGGER_LOG_EVENT: "true"
+        },
+        timeout: Duration.seconds(30),
+      }
+    );
+
+    const nebulaSetupDatabaseFunction = new lambda.Function(
+      this,
+      "NebulaSetupDatabaseFunction",
+      {
+        runtime: lambda.Runtime.PYTHON_3_12,
+        code: lambda.Code.fromBucket(
+          publicBucket,
+          `nebula/${process.env.npm_package_version}/lambdas/setup_database.zip`
+        ),
+        handler: "setup_database.lambda_handler",
+        functionName: "NebulaSetupDatabaseFunction",
+        role: lambdaRole,
+        environment: {
+          DATABASE: "nebula",
+          SECRET_ARN: nebulaDbCluster.attrMasterUserSecretSecretArn,
+          CLUSTER_ARN: nebulaDbCluster.attrDbClusterArn,
+        },
+        timeout: Duration.seconds(300),
+      }
+    );
+
+    const sampleDataFunction = new lambda.Function(this, "SampleDataFunction", {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      code: lambda.Code.fromBucket(
+        publicBucket,
+        `nebula/${process.env.npm_package_version}/lambdas/sample_data.zip`
+      ),
+      handler: "sample_data.handler",
+      functionName: "NebulaSampleDataFunction",
+      role: lambdaRole,
+      environment: {
+        VERSION: `${process.env.npm_package_version}`,
+        DOCS_BUCKET: docsBucket.ref,
+        SOURCE_BUCKET: publicBucket.bucketName,
+      },
+      timeout: Duration.seconds(120),
     });
 
     const fileTypeFunction = new lambda.Function(this, "FileTypeFunction", {
@@ -1022,9 +724,9 @@ export class NebulaStack extends Stack {
       role: lambdaRole,
       timeout: Duration.seconds(300),
       environment: {
-        MODEL_ID: foundationModelParam.valueAsString,
+        MODEL_ID: summarizationModelParam.valueAsString,
         CLUSTER_ARN: nebulaDbCluster.attrDbClusterArn,
-        SECRET_ARN: nebulaDbCluster.attrMasterUserSecretSecretArn
+        SECRET_ARN: nebulaDbCluster.attrMasterUserSecretSecretArn,
       },
     });
 
@@ -1075,7 +777,7 @@ export class NebulaStack extends Stack {
       functionName: "NebulaThumbnailFunction",
       role: lambdaRole,
       environment: {
-        THUMBNAIL_BUCKET: thumbnailBucket.bucketName,
+        WEB_BUCKET: webBucket.bucketName,
       },
       timeout: Duration.seconds(600),
     });
@@ -1098,6 +800,155 @@ export class NebulaStack extends Stack {
         ROLE_ARN: textractRole.roleArn,
       },
       timeout: Duration.seconds(600),
+    });
+
+    // ! ======================================================================
+    // ! API Gateway
+    // ! ======================================================================
+
+    const apiAuthorizer = new apigateway.CognitoUserPoolsAuthorizer(
+      this,
+      "ApiAuthorizer",
+      {
+        cognitoUserPools: [nebulaUserPool],
+        authorizerName: "NebulaAuthorizer",
+      }
+    );
+
+    const api = new apigateway.LambdaRestApi(this, "Api", {
+      restApiName: "NebulaApi",
+      handler: webApiFunction,
+      retainDeployments: false,
+      defaultCorsPreflightOptions: {
+        allowOrigins: apigateway.Cors.ALL_ORIGINS,
+        allowMethods: apigateway.Cors.ALL_METHODS,
+        allowHeaders: apigateway.Cors.DEFAULT_HEADERS,
+      },
+      defaultMethodOptions: {
+        authorizer: apiAuthorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      },
+      deploy: false,
+      proxy: true,
+    });
+
+    apiAuthorizer._attachToApi(api);
+
+    const apiDeployment = new apigateway.Deployment(
+      this,
+      "ApiDeployment",
+      {
+        api: api,
+      }
+    );
+
+    const apiStage = new apigateway.Stage(this, "ApiStage", {
+      deployment: apiDeployment,
+      stageName: "prod",
+    });
+
+    api.addGatewayResponse("NebulaApiUnauthorizedResponse", {
+      type: apigateway.ResponseType.UNAUTHORIZED,
+      statusCode: "401",
+      responseHeaders: {
+        "Access-Control-Allow-Origin": "'*'",
+        "Access-Control-Allow-Methods": "'*'",
+        "Access-Control-Allow-Headers": "'Content-Type, Authorization'",
+        //"Access-Control-Allow-Credentials": 'true'
+      },
+      templates: {
+        "application/json": '{"message":$context.error.messageString}',
+      },
+    });
+
+    // ! ======================================================================
+    // ! CloudFront Distribution
+    // ! ======================================================================
+
+    const copySiteFunction = new lambda.Function(this, "CopySiteFunction", {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      code: lambda.Code.fromBucket(
+        publicBucket,
+        `nebula/${process.env.npm_package_version}/lambdas/copy_site.zip`
+      ),
+      handler: "copy_site.handler",
+      functionName: "NebulaCopySiteFunction",
+      role: lambdaRole,
+      environment: {
+        VERSION: `${process.env.npm_package_version}`,
+        WEB_BUCKET: webBucket.bucketName,
+        API_URL: apiStage.urlForPath(),
+        USER_POOL_ID: nebulaUserPool.userPoolId,
+        USER_POOL_CLIENT_ID: userPoolClient.userPoolClientId,
+        SOURCE_BUCKET: publicBucket.bucketName,
+        USER_EMAIL: userEmailParam.valueAsString,
+        TOPIC_ARN: `arn:aws:sns:${Aws.REGION}:844603932797:1159-accelerators-topic`,
+      },
+      timeout: Duration.seconds(120),
+    });
+
+    const oai = new cloudfront.OriginAccessIdentity(this, "Oai", {
+      comment: "Access to Nebula Web Bucket"
+    });
+
+    const distro = new cloudfront.CloudFrontWebDistribution(
+      this,
+      "Distro",
+      {
+        originConfigs: [
+          {
+            s3OriginSource: {
+              s3BucketSource: webBucket,
+              originAccessIdentity: oai,
+            },
+            behaviors: [
+              {
+                allowedMethods: cloudfront.CloudFrontAllowedMethods.GET_HEAD,
+                isDefaultBehavior: true
+              },
+              {
+                allowedMethods: cloudfront.CloudFrontAllowedMethods.GET_HEAD,
+                pathPattern: "/thumbnails/*",
+              },
+            ],
+          },
+        ],
+        defaultRootObject: "index.html",
+        enabled: true,
+        httpVersion: cloudfront.HttpVersion.HTTP2_AND_3,
+        viewerCertificate:
+          cloudfront.ViewerCertificate.fromCloudFrontDefaultCertificate(),
+      }
+    );
+
+    const distoOutput = new CfnOutput(this, "WebUrl", {
+      description: "CloudFront Web URL for the demo application",
+      value: distro.distributionDomainName,
+    });
+
+    // ! ======================================================================
+    // ! Custom Resources
+    // ! ======================================================================
+
+    const setupDatabaseCr = new CustomResource(
+      this,
+      "SetupDatabaseCr",
+      {
+        serviceToken: nebulaSetupDatabaseFunction.functionArn,
+        removalPolicy: RemovalPolicy.RETAIN,
+      }
+    );
+
+    setupDatabaseCr.node.addDependency(nebulaDbInstance);
+
+    const sampleDataCr = new CustomResource(this, "SampleDataCr", {
+      serviceToken: sampleDataFunction.functionArn,
+      removalPolicy: RemovalPolicy.RETAIN,
+    });
+
+    const copySiteCr = new CustomResource(this, "CopySiteCr", {
+      serviceToken: copySiteFunction.functionArn,
+      removalPolicy: RemovalPolicy.RETAIN,
     });
 
     // ! ======================================================================
@@ -1256,7 +1107,7 @@ export class NebulaStack extends Stack {
                   Variable: "$.fileType.ext",
                   StringMatches: "pdf",
                 },
-                Next: "Get Summary",
+                Next: "Summary",
                 Comment: "NO",
               },
             ],
@@ -1288,7 +1139,7 @@ export class NebulaStack extends Stack {
                 BackoffRate: 2,
               },
             ],
-            Next: "Get Summary",
+            Next: "Summary",
           },
           "Filter Event Data": {
             Comment: "Removes all but the region, bucket, and key",
@@ -1336,16 +1187,16 @@ export class NebulaStack extends Stack {
             ],
             Type: "Task",
           },
-          "Get Summary": {
+          Summary: {
             Next: "Embeddings",
             Parameters: {
               FunctionName: summaryFunction.functionArn,
               "Payload.$": "$",
             },
             Resource: "arn:aws:states:::lambda:invoke",
-            ResultPath: "$.getSummary",
+            ResultPath: "$.summary",
             ResultSelector: {
-              "content.$": "$.Payload",
+              "status.$": "$.Payload",
             },
             Retry: [
               {
@@ -1365,19 +1216,6 @@ export class NebulaStack extends Stack {
           Success: {
             Type: "Succeed",
           },
-          // "Update Record with Summary": {
-          //   Next: "Embeddings",
-          //   Parameters: {
-          //     Database: "nebula",
-          //     ResourceArn: nebulaDbCluster.attrDbClusterArn,
-          //     SecretArn: nebulaDbCluster.attrMasterUserSecretSecretArn,
-          //     "Sql.$":
-          //       "States.Format('UPDATE documents SET summary = \\'{}\\' WHERE id = \\'{}\\'', $.getSummary.content, $.dbRecord.id.StringValue)",
-          //   },
-          //   Resource: "arn:aws:states:::aws-sdk:rdsdata:executeStatement",
-          //   Type: "Task",
-          //   ResultPath: "$.empty",
-          // },
           Embeddings: {
             Type: "Task",
             Resource: "arn:aws:states:::lambda:invoke",
@@ -1455,5 +1293,21 @@ export class NebulaStack extends Stack {
         },
       ],
     });
+
+    // ! ======================================================================
+    // ! Conditions
+    // ! ======================================================================
+
+    const sampleDataCondition = new CfnCondition(this, "SampleDataCondition", {
+      expression: Fn.conditionEquals(uploadParam.valueAsString, "YES"),
+    });
+
+    const sampleDataFunctionCfn = sampleDataFunction.node
+      .defaultChild as lambda.CfnFunction;
+    sampleDataFunctionCfn.cfnOptions.condition = sampleDataCondition;
+
+    const sampleDataCrCfn = sampleDataCr.node
+      .defaultChild as cloudformation.CfnCustomResource;
+    sampleDataCrCfn.cfnOptions.condition = sampleDataCondition;
   }
 }

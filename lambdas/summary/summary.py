@@ -23,7 +23,7 @@ bedrock_client: BedrockRuntimeClient = boto3.client("bedrock-runtime")  # type: 
 rds_client: RDSDataServiceClient = boto3.client("rds-data")  # type: ignore
 textract_client: TextractClient = boto3.client("textract")  # type: ignore
 
-MAX_IMAGE_TOKENS = 1024
+MAX_IMAGE_TOKENS = 2048
 MAX_TEXT_TOKENS = 8192
 MODEL_ID = os.environ["MODEL_ID"]
 IMAGE_TYPES = ["gif", "jpg", "jpeg", "png", "webp"]
@@ -145,7 +145,7 @@ def put_summary(id: str, summary: str):
 @logger.inject_lambda_context(log_event=True)
 def lambda_handler(
     event: dict[str, Any], context: LambdaContext
-) -> dict[str, str] | None:
+) -> str | None:
     try:
         bucket: str = event["doc"]["bucket"]
         key: str = event["doc"]["key"]
@@ -159,7 +159,7 @@ def lambda_handler(
 
     if ext not in SUMMARY_TYPES:
         logger.info(f"Unsupported file extension: {ext}")
-        return {"status": "none"}
+        return ""
 
     try:
         if ext in IMAGE_TYPES:
@@ -170,8 +170,7 @@ def lambda_handler(
         logger.info(summary)
         put_summary(id=id, summary=summary)
 
-        return {"status": "success"}
+        return "SUCCESS"
     except Exception as e:
         logger.error(f"Error processing file: {e}")
-        return {"status": "failed"}
-        raise e
+        return "FAILED"

@@ -1,10 +1,10 @@
 <template>
-  <q-header class="bg-secondary text-charcoal">
+  <q-header class="bg-primary text-white">
     <q-toolbar style="height: 85px">
       <q-toolbar-title>
         <a href="https://1159.ai" target="_blank">
           <q-avatar size="75px">
-          <q-img src="~assets/logos/1159-gunmetal-solid.png" />
+          <q-img src="~assets/logos/1159-white-solid.png" />
         </q-avatar>
         </a>
 

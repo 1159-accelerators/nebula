@@ -8,8 +8,9 @@ from PIL import Image
 from mypy_boto3_s3.client import S3Client
 
 logger = Logger()
-s3_client: S3Client = boto3.client("s3") # type: ignore
+s3_client: S3Client = boto3.client("s3")  # type: ignore
 MAX_SIZE = (512, 512)
+
 
 def get_event_data(event: dict) -> dict[str, str]:
     try:
@@ -18,11 +19,12 @@ def get_event_data(event: dict) -> dict[str, str]:
             "key": event["doc"]["key"],
             "id": event["id"],
             "ext": event["fileType"]["ext"],
-            "thumbnail_bucket": os.environ["THUMBNAIL_BUCKET"]
+            "web_bucket": os.environ["WEB_BUCKET"],
         }
     except KeyError as e:
         logger.error(f"Missing required event data: {e}")
         raise ValueError(f"Invalid event structure: {e}")
+
 
 def get_s3_object(bucket: str, key: str) -> bytes:
     try:
@@ -31,6 +33,7 @@ def get_s3_object(bucket: str, key: str) -> bytes:
     except Exception as e:
         logger.error(f"Could not get object from S3: {e}")
         raise
+
 
 def generate_thumbnail(doc_data: bytes, ext: str) -> Image.Image:
     if ext == "pdf":
@@ -42,18 +45,22 @@ def generate_thumbnail(doc_data: bytes, ext: str) -> Image.Image:
     else:
         logger.info("Generating thumbnail for Image")
         image = Image.open(BytesIO(doc_data))
-    
+
     image.thumbnail(MAX_SIZE)
     return image
+
 
 def save_thumbnail(image, bucket, key):
     image_bytes = BytesIO()
     image.save(fp=image_bytes, format="PNG")
     try:
-        s3_client.put_object(Body=image_bytes.getvalue(), Bucket=bucket, Key=key)
+        s3_client.put_object(
+            Body=image_bytes.getvalue(), Bucket=bucket, Key=f"thumbnails/{key}.png"
+        )
     except Exception as e:
         logger.error(f"Could not save thumbnail to S3: {e}")
         raise
+
 
 @logger.inject_lambda_context(log_event=True)
 def lambda_handler(event, context: LambdaContext):
@@ -61,7 +68,7 @@ def lambda_handler(event, context: LambdaContext):
         event_data = get_event_data(event)
         doc_data = get_s3_object(event_data["bucket"], event_data["key"])
         thumbnail = generate_thumbnail(doc_data, event_data["ext"])
-        save_thumbnail(thumbnail, event_data["thumbnail_bucket"], event_data["id"])
+        save_thumbnail(thumbnail, event_data["web_bucket"], event_data["id"])
         return {"status": "SUCCESS"}
     except Exception as e:
         logger.error(f"Error processing thumbnail: {e}")

@@ -1,4 +1,16 @@
-// app global css in SCSS form
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 200 300 400 500 600 700 800 900;
+  font-display: swap;
+  src: url(./fonts/InterVariable.woff2) format('woff2');
+}
+
+.q-table th {
+  color: $grey-7;
+  font-weight: 600;
+}
+
 .text-gunmetal {
   color: $gunmetal !important;
 }
@@ -11,6 +23,16 @@
 }
 .bg-charcoal {
   background: $charcoal !important;
+}
+
+.card-thumbnail-container {
+  max-height: 256px;
+  max-width: 256px;
+}
+
+.card-thumbnail {
+  height: 200px;
+  width: 100%;
 }
 
 .kb-container {

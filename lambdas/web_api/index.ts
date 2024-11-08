@@ -1,5 +1,14 @@
-import { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
+import {
+  APIGatewayProxyEvent,
+  APIGatewayProxyResult,
+  Context,
+} from "aws-lambda";
+import { Logger } from "@aws-lambda-powertools/logger";
 import { S3Client, ListObjectsCommand } from "@aws-sdk/client-s3";
+import {
+  RDSDataClient,
+  ExecuteStatementCommand,
+} from "@aws-sdk/client-rds-data";
 import {
   BedrockAgentClient,
   GetKnowledgeBaseCommand,
@@ -12,6 +21,19 @@ import {
   RetrieveAndGenerateCommand,
   Citation,
 } from "@aws-sdk/client-bedrock-agent-runtime";
+
+const logger = new Logger();
+
+const rdsClient = new RDSDataClient({});
+const rdsListDocumentsInput = {
+  resourceArn: process.env.CLUSTER_ARN, // required
+  secretArn: process.env.SECRET_ARN, // required
+  sql: "SELECT id, region, bucket, key, name, size, created_at FROM documents", // required
+  database: "nebula",
+};
+const rdsListDocumentsCommand = new ExecuteStatementCommand(
+  rdsListDocumentsInput
+);
 
 const s3Client = new S3Client({});
 const s3ListObjectsInput = {
@@ -47,7 +69,33 @@ type ResponseBody = {
   };
 };
 
-const buildResponse = (body: ResponseBody, statusCode = 200) => {
+interface Document {
+  id?: string;
+  region?: string;
+  bucket?: string;
+  key?: string;
+  name?: string;
+  mime?: string;
+  size?: number;
+  ext?: string;
+  summary?: string;
+  createdAt?: string;
+}
+
+interface ResponseError {
+  message?: string;
+  detail?: string;
+}
+
+interface DocumentResponse {
+  docs?: Document[] | [];
+  error?: ResponseError;
+}
+
+const buildResponse = (
+  body: ResponseBody | DocumentResponse,
+  statusCode = 200
+) => {
   return {
     statusCode: statusCode,
     headers: {
@@ -60,23 +108,42 @@ const buildResponse = (body: ResponseBody, statusCode = 200) => {
 };
 
 export const handler = async (
-  event: APIGatewayProxyEvent
+  event: APIGatewayProxyEvent,
+  context: Context
 ): Promise<APIGatewayProxyResult> => {
+  logger.logEventIfEnabled(event);
+  logger.addContext(context);
+
   let response;
 
   if (event.path === "/docs" && event.httpMethod === "GET") {
+    logger.info("Retrieving document list");
     try {
-      const s3Response = await s3Client.send(s3ListObjectsCommand);
+      const rdsResponse = await rdsClient.send(rdsListDocumentsCommand);
+
+      let records: Document[] | [];
+
+      if (rdsResponse.records) {
+        records = rdsResponse.records.map((record) => ({
+          id: record[0]["stringValue"],
+          region: record[1]["stringValue"],
+          bucket: record[2]["stringValue"],
+          key: record[3]["stringValue"],
+          name: record[4]["stringValue"],
+          size: record[5]["longValue"],
+          createdAt: record[6]["stringValue"],
+        }));
+      } else {
+        records = [];
+      }
+
       response = buildResponse({
-        data: {
-          docs: s3Response.Contents?.map((doc) => doc.Key),
-          count: s3Response.Contents?.length,
-        },
+        docs: records,
       });
     } catch (err) {
-      console.log(err);
+      logger.error("Error getting documents", err as Error);
       response = buildResponse(
-        { error: { message: "something went wrong", detail: err } },
+        { error: { message: "Could not retrieve documents", detail: err } },
         500
       );
     }

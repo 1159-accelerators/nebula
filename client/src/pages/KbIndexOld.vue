@@ -41,10 +41,12 @@
 import { onMounted, ref } from 'vue';
 import { useUiStore } from 'stores/ui-store';
 import { useAuthStore } from 'src/stores/auth-store';
+import { useDocStore } from 'src/stores/doc-store';
 import { useMessageStore } from 'src/stores/message-store';
 import KbChat from 'src/components/KbChat.vue';
 import KbFooter from 'components/KbFooter.vue';
 
+const docStore = useDocStore();
 const uiStore = useUiStore();
 const authStore = useAuthStore();
 const messageStore = useMessageStore();
@@ -57,6 +59,7 @@ const scrollPlaceholderRef = ref<HTMLDivElement | null>(null);
 
 onMounted(async () => {
   await authStore.setToken();
+  await docStore.listDocs();
   messageStore.scrollPlaceholderRef = scrollPlaceholderRef.value;
 });
 </script>
