@@ -114,6 +114,8 @@ export const handler = async (
   logger.logEventIfEnabled(event);
   logger.addContext(context);
 
+  console.log(event)
+
   let response;
 
   if (event.path === "/docs" && event.httpMethod === "GET") {

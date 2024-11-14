@@ -6,9 +6,41 @@
   src: url(./fonts/InterVariable.woff2) format('woff2');
 }
 
+.grid-toggle {
+  border: 1px solid white
+}
+
+.search-name-link {
+  color: $primary;
+  font-weight: 700;
+  font-size: 1.6rem;
+  text-decoration: none;
+}
+
+.search-name-link:visited {
+  color: $primary;
+  text-decoration: none;
+}
+
+.search-back-link {
+  font-size: 1.4rem;
+  text-decoration: none;
+  color: $secondary;
+  display: flex;
+  align-items: center;
+}
+
+.search-back-link:visited {
+  color: $secondary;
+  text-decoration: none;
+}
 .q-table th {
   color: $grey-7;
   font-weight: 600;
+}
+
+.q-dialog__inner--minimized > div {
+  max-width: 80vw !important;
 }
 
 .text-gunmetal {

@@ -14,6 +14,9 @@
   },
   "dependencies": {
     "@aws-amplify/ui-vue": "^4.2.22",
+    "@aws-sdk/client-s3": "^3.688.0",
+    "@aws-sdk/credential-providers": "^3.687.0",
+    "@aws-sdk/lib-storage": "^3.689.0",
     "@quasar/extras": "^1.16.13",
     "aws-amplify": "^6.8.0",
     "axios": "^1.7.7",

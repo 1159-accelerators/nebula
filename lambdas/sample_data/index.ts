@@ -5,21 +5,11 @@ import {
   ListObjectsCommand,
   CopyObjectCommand,
 } from "@aws-sdk/client-s3";
-import {
-  BedrockAgentClient,
-  StartIngestionJobCommand,
-} from "@aws-sdk/client-bedrock-agent";
 
 const s3Client = new S3Client({});
 const listObjectsCommand = new ListObjectsCommand({
   Bucket: process.env.SOURCE_BUCKET,
   Prefix: `nebula/${process.env.VERSION}/sample_data/`,
-});
-
-const bedrockAgentClient = new BedrockAgentClient({});
-const startIngestionJobCommand = new StartIngestionJobCommand({
-  knowledgeBaseId: process.env.KB_ID,
-  dataSourceId: process.env.DATA_SOURCE_ID,
 });
 
 type CloudFormationEvent = {
@@ -52,7 +42,6 @@ export const handler = async (event: CloudFormationEvent, context: Context) => {
 
   try {
     const sourceObjects = await s3Client.send(listObjectsCommand);
-    console.log(sourceObjects)
     const keys = sourceObjects.Contents?.map((object) => ({
       newKey: object.Key?.slice(25),
       oldKey: object.Key,
@@ -70,7 +59,6 @@ export const handler = async (event: CloudFormationEvent, context: Context) => {
       }
     }
 
-    await bedrockAgentClient.send(startIngestionJobCommand);
     responseStatus = "SUCCESS";
     responseData = { Status: "Sample data copied" };
   } catch (err) {
@@ -99,8 +87,6 @@ function sendResponse(
       NoEcho: false,
       Data: responseData,
     });
-
-    console.log("Response body:\n", responseBody);
 
     //var parsedUrl = url.parse(event.ResponseURL);
     //let parsedUrl = new URL(event.ResponseURL);

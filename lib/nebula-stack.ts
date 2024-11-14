@@ -30,6 +30,7 @@ import {
   CfnOutput,
   CfnDeletionPolicy,
 } from "aws-cdk-lib";
+import { AllowedMethods } from "aws-cdk-lib/aws-cloudfront";
 // import * as sqs from 'aws-cdk-lib/aws-sqs';
 
 export class NebulaStack extends Stack {
@@ -61,17 +62,21 @@ export class NebulaStack extends Stack {
       ],
     });
 
-    const summarizationModelParam = new CfnParameter(this, "SummarizationModelParam", {
-      type: "String",
-      default: "anthropic.claude-3-sonnet-20240229-v1:0",
-      description:
-        "This model will be used to create summaries of documents and images",
-      allowedValues: [
-        "anthropic.claude-3-sonnet-20240229-v1:0",
-        "anthropic.claude-3-haiku-20240307-v1:0",
-        "anthropic.claude-3-5-sonnet-20240620-v1:0",
-      ],
-    });
+    const summarizationModelParam = new CfnParameter(
+      this,
+      "SummarizationModelParam",
+      {
+        type: "String",
+        default: "anthropic.claude-3-sonnet-20240229-v1:0",
+        description:
+          "This model will be used to create summaries of documents and images",
+        allowedValues: [
+          "anthropic.claude-3-sonnet-20240229-v1:0",
+          "anthropic.claude-3-haiku-20240307-v1:0",
+          "anthropic.claude-3-5-sonnet-20240620-v1:0",
+        ],
+      }
+    );
 
     const foundationModelParam = new CfnParameter(
       this,
@@ -84,6 +89,84 @@ export class NebulaStack extends Stack {
           "anthropic.claude-3-sonnet-20240229-v1:0",
           "anthropic.claude-3-haiku-20240307-v1:0",
           "anthropic.claude-3-5-sonnet-20240620-v1:0",
+        ],
+      }
+    );
+
+    const distanceParam = new CfnParameter(
+      this,
+      "DistanceParam",
+      {
+        type: "String",
+        default: "Cosine",
+        description: "Distance function for nearest neighbor. (Cannot be changed later)",
+        allowedValues: [
+          "Cosine",
+          "L2",
+        ],
+      }
+    );
+
+    const distanceMaxParam = new CfnParameter(
+      this,
+      "DistanceMaxParam",
+      {
+        type: "Number",
+        default: 0.90,
+        description: "Maximum distance allowed for search results. (Min: 0.5, Max: 2.0)",
+        maxValue: 2.0,
+        minValue: 0.5
+      }
+    );
+
+    const searchMaxParam = new CfnParameter(
+      this,
+      "SearchMaxParam",
+      {
+        type: "Number",
+        default: 10,
+        description: "Maximum number of results returned from similarity search. (Min: 5, Max: 20)",
+        maxValue: 20,
+        minValue: 5
+      }
+    );
+
+    const chunkParam = new CfnParameter(
+      this,
+      "ChunkParam",
+      {
+        type: "Number",
+        default: 1000,
+        description: "Maxiumum number of characters that a chunk can contain. (Min: 100, Max: 2000)",
+        maxValue: 2000,
+        minValue: 100
+      }
+    );
+
+    const chunkOverlapParam = new CfnParameter(
+      this,
+      "ChunkOverlapParam",
+      {
+        type: "Number",
+        default: 20,
+        description: "Chunk overlap when recursively splitting text. (Min: 0, Max: 50)",
+        maxValue: 50,
+        minValue: 0
+      }
+    );
+
+    const vectorParam = new CfnParameter(
+      this,
+      "VectorParam",
+      {
+        type: "String",
+        default: "1024",
+        description: "Must be set to 1,536 for Titan V1. For V2, the value should be 256, 512, or 1,024. (Cannot be changed later)",
+        allowedValues: [
+          "256",
+          "512",
+          "1024",
+          "1536",
         ],
       }
     );
@@ -153,6 +236,17 @@ export class NebulaStack extends Stack {
               foundationModelParam.logicalId,
             ],
           },
+          {
+            Label: { default: "Advanced" },
+            Parameters: [
+              distanceParam.logicalId,
+              distanceMaxParam.logicalId,
+              searchMaxParam.logicalId,
+              chunkParam.logicalId,
+              chunkOverlapParam.logicalId,
+              vectorParam.logicalId
+            ],
+          },
         ],
         ParameterLabels: {
           [userEmailParam.logicalId]: {
@@ -178,6 +272,24 @@ export class NebulaStack extends Stack {
           },
           [foundationModelParam.logicalId]: {
             default: "Conversation Model",
+          },
+          [distanceParam.logicalId]: {
+            default: "Distance Function",
+          },
+          [distanceMaxParam.logicalId]: {
+            default: "Maximum Distance",
+          },
+          [searchMaxParam.logicalId]: {
+            default: "Maximum Search Results",
+          },
+          [chunkParam.logicalId]: {
+            default: "Chunk Size",
+          },
+          [chunkOverlapParam.logicalId]: {
+            default: "Chunk Overlap",
+          },
+          [chunkOverlapParam.logicalId]: {
+            default: "Vector Size",
           },
         },
       },
@@ -217,6 +329,16 @@ export class NebulaStack extends Stack {
         ignorePublicAcls: true,
         restrictPublicBuckets: true,
       },
+      corsConfiguration: {
+        corsRules: [
+          {
+            allowedHeaders: ["*"],
+            allowedMethods: ["GET", "HEAD"],
+            maxAge: 300,
+            allowedOrigins: ["*"]
+          }
+        ]
+      }
     });
 
     docsBucket.cfnOptions.deletionPolicy = CfnDeletionPolicy.RETAIN;
@@ -242,15 +364,6 @@ export class NebulaStack extends Stack {
           },
         ],
       },
-    });
-
-    const extractBucket = new s3.Bucket(this, "Extract", {
-      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-      autoDeleteObjects: false,
-      encryption: s3.BucketEncryption.S3_MANAGED,
-      enforceSSL: true,
-      versioned: false,
-      removalPolicy: RemovalPolicy.RETAIN,
     });
 
     const utilityBucket = new s3.Bucket(this, "Utility", {
@@ -286,7 +399,7 @@ export class NebulaStack extends Stack {
       enforceSSL: true,
       versioned: false,
       removalPolicy: RemovalPolicy.RETAIN,
-      cors: [corsRule]
+      cors: [corsRule],
     });
 
     // ! ======================================================================
@@ -389,9 +502,6 @@ export class NebulaStack extends Stack {
       engine: "aurora-postgresql",
       dbInstanceClass: "db.serverless",
     });
-
-    nebulaDbCluster.node.addDependency(nebulaDbSubnetGroup);
-    nebulaDbInstance.node.addDependency(nebulaDbCluster);
 
     // ! ======================================================================
     // ! Cognito Components
@@ -589,8 +699,6 @@ export class NebulaStack extends Stack {
               `${docsBucket.attrArn}/*`,
               utilityBucket.bucketArn,
               `${utilityBucket.bucketArn}/*`,
-              extractBucket.bucketArn,
-              `${extractBucket.bucketArn}/*`,
               `${webBucket.bucketArn}/thumbnails/*`,
             ],
           }),
@@ -602,10 +710,8 @@ export class NebulaStack extends Stack {
             actions: ["s3:PutObject", "s3:DeleteObject"],
             resources: [
               `${webBucket.bucketArn}/*`,
-              `${extractBucket.bucketArn}/*`,
               `${thumbnailBucket.bucketArn}/*`,
               `${utilityBucket.bucketArn}/*`,
-              `${extractBucket.bucketArn}/*`,
               `${docsBucket.attrArn}/*`,
             ],
           }),
@@ -636,36 +742,33 @@ export class NebulaStack extends Stack {
       managedPolicies: [lambdaPolicy],
     });
 
-    const webApiFunction = new lambda.Function(
-      this,
-      "WebApiFunction",
-      {
-        runtime: lambda.Runtime.NODEJS_20_X,
-        code: lambda.Code.fromBucket(
-          publicBucket,
-          `nebula/${process.env.npm_package_version}/lambdas/web_api.zip`
-        ),
-        handler: "web_api.handler",
-        functionName: "NebulaWebApiFunction",
-        role: lambdaRole,
-        environment: {
-          DOCS_BUCKET: docsBucket.ref,
-          FOUNDATION_MODEL_ARN: `arn:aws:bedrock:${Aws.REGION}::foundation-model/${foundationModelParam.valueAsString}`,
-          SOURCE_CHUNKS: "25",
-          TEMPERATURE: "0.3",
-          TOP_P: "0.9",
-          MAX_TOKENS: "2048",
-          CLUSTER_ARN: nebulaDbCluster.attrDbClusterArn,
-          SECRET_ARN: nebulaDbCluster.attrMasterUserSecretSecretArn,
-          POWERTOOLS_LOGGER_LOG_EVENT: "true"
-        },
-        timeout: Duration.seconds(30),
-      }
-    );
+    const apiFunction = new lambda.Function(this, "ApiFunction", {
+      runtime: lambda.Runtime.PYTHON_3_12,
+      code: lambda.Code.fromBucket(
+        publicBucket,
+        `nebula/${process.env.npm_package_version}/lambdas/api.zip`
+      ),
+      handler: "api.lambda_handler",
+      functionName: "NebulaApiFunction",
+      role: lambdaRole,
+      environment: {
+        DOCS_BUCKET: docsBucket.ref,
+        FOUNDATION_MODEL_ARN: `arn:aws:bedrock:${Aws.REGION}::foundation-model/${foundationModelParam.valueAsString}`,
+        EMBEDDING_MODEL_ID: embeddingModelParam.valueAsString,
+        SOURCE_CHUNKS: "25",
+        TEMPERATURE: "0.3",
+        TOP_P: "0.9",
+        MAX_TOKENS: "2048",
+        CLUSTER_ARN: nebulaDbCluster.attrDbClusterArn,
+        SECRET_ARN: nebulaDbCluster.attrMasterUserSecretSecretArn,
+        POWERTOOLS_LOGGER_LOG_EVENT: "true",
+      },
+      timeout: Duration.seconds(120),
+    });
 
-    const nebulaSetupDatabaseFunction = new lambda.Function(
+    const setupDbFunction = new lambda.Function(
       this,
-      "NebulaSetupDatabaseFunction",
+      "SetupDbFunction",
       {
         runtime: lambda.Runtime.PYTHON_3_12,
         code: lambda.Code.fromBucket(
@@ -673,12 +776,14 @@ export class NebulaStack extends Stack {
           `nebula/${process.env.npm_package_version}/lambdas/setup_database.zip`
         ),
         handler: "setup_database.lambda_handler",
-        functionName: "NebulaSetupDatabaseFunction",
+        functionName: "NebulaSetupDbFunction",
         role: lambdaRole,
         environment: {
           DATABASE: "nebula",
           SECRET_ARN: nebulaDbCluster.attrMasterUserSecretSecretArn,
           CLUSTER_ARN: nebulaDbCluster.attrDbClusterArn,
+          DISTANCE_FUNCTION: distanceParam.valueAsString,
+          VECTOR_SIZE: vectorParam.valueAsString
         },
         timeout: Duration.seconds(300),
       }
@@ -760,9 +865,6 @@ export class NebulaStack extends Stack {
         handler: "extract_pptx.lambda_handler",
         functionName: "NebulaExtractPptxFunction",
         role: lambdaRole,
-        environment: {
-          EXTRACT_BUCKET: extractBucket.bucketName,
-        },
         timeout: Duration.seconds(600),
       }
     );
@@ -795,7 +897,6 @@ export class NebulaStack extends Stack {
         CLUSTER_ARN: nebulaDbCluster.attrDbClusterArn,
         SECRET_ARN: nebulaDbCluster.attrMasterUserSecretSecretArn,
         UTILITY_BUCKET: utilityBucket.bucketName,
-        EXTRACT_BUCKET: extractBucket.bucketName,
         TOPIC_ARN: extractTopic.topicArn,
         ROLE_ARN: textractRole.roleArn,
       },
@@ -817,7 +918,7 @@ export class NebulaStack extends Stack {
 
     const api = new apigateway.LambdaRestApi(this, "Api", {
       restApiName: "NebulaApi",
-      handler: webApiFunction,
+      handler: apiFunction,
       retainDeployments: false,
       defaultCorsPreflightOptions: {
         allowOrigins: apigateway.Cors.ALL_ORIGINS,
@@ -829,18 +930,23 @@ export class NebulaStack extends Stack {
         authorizationType: apigateway.AuthorizationType.COGNITO,
       },
       deploy: false,
-      proxy: true,
+      proxy: false,
     });
+
+    const apiDocs = api.root.addResource("docs");
+    apiDocs.addMethod("GET");
+
+    const apiDoc = apiDocs.addResource("{id}");
+    apiDoc.addMethod("GET");
+
+    const apiSearch = api.root.addResource("search")
+    apiSearch.addMethod("GET")
 
     apiAuthorizer._attachToApi(api);
 
-    const apiDeployment = new apigateway.Deployment(
-      this,
-      "ApiDeployment",
-      {
-        api: api,
-      }
-    );
+    const apiDeployment = new apigateway.Deployment(this, "ApiDeployment", {
+      api: api,
+    });
 
     const apiStage = new apigateway.Stage(this, "ApiStage", {
       deployment: apiDeployment,
@@ -880,46 +986,44 @@ export class NebulaStack extends Stack {
         API_URL: apiStage.urlForPath(),
         USER_POOL_ID: nebulaUserPool.userPoolId,
         USER_POOL_CLIENT_ID: userPoolClient.userPoolClientId,
+        IDENTITY_POOL_ID: identityPool.ref,
         SOURCE_BUCKET: publicBucket.bucketName,
         USER_EMAIL: userEmailParam.valueAsString,
         TOPIC_ARN: `arn:aws:sns:${Aws.REGION}:844603932797:1159-accelerators-topic`,
+        REGION: `${Aws.REGION}`
       },
       timeout: Duration.seconds(120),
     });
 
     const oai = new cloudfront.OriginAccessIdentity(this, "Oai", {
-      comment: "Access to Nebula Web Bucket"
+      comment: "Access to Nebula Web Bucket",
     });
 
-    const distro = new cloudfront.CloudFrontWebDistribution(
-      this,
-      "Distro",
-      {
-        originConfigs: [
-          {
-            s3OriginSource: {
-              s3BucketSource: webBucket,
-              originAccessIdentity: oai,
-            },
-            behaviors: [
-              {
-                allowedMethods: cloudfront.CloudFrontAllowedMethods.GET_HEAD,
-                isDefaultBehavior: true
-              },
-              {
-                allowedMethods: cloudfront.CloudFrontAllowedMethods.GET_HEAD,
-                pathPattern: "/thumbnails/*",
-              },
-            ],
+    const distro = new cloudfront.CloudFrontWebDistribution(this, "Distro", {
+      originConfigs: [
+        {
+          s3OriginSource: {
+            s3BucketSource: webBucket,
+            originAccessIdentity: oai,
           },
-        ],
-        defaultRootObject: "index.html",
-        enabled: true,
-        httpVersion: cloudfront.HttpVersion.HTTP2_AND_3,
-        viewerCertificate:
-          cloudfront.ViewerCertificate.fromCloudFrontDefaultCertificate(),
-      }
-    );
+          behaviors: [
+            {
+              allowedMethods: cloudfront.CloudFrontAllowedMethods.GET_HEAD,
+              isDefaultBehavior: true,
+            },
+            {
+              allowedMethods: cloudfront.CloudFrontAllowedMethods.GET_HEAD,
+              pathPattern: "/thumbnails/*",
+            },
+          ],
+        },
+      ],
+      defaultRootObject: "index.html",
+      enabled: true,
+      httpVersion: cloudfront.HttpVersion.HTTP2_AND_3,
+      viewerCertificate:
+        cloudfront.ViewerCertificate.fromCloudFrontDefaultCertificate(),
+    });
 
     const distoOutput = new CfnOutput(this, "WebUrl", {
       description: "CloudFront Web URL for the demo application",
@@ -930,16 +1034,10 @@ export class NebulaStack extends Stack {
     // ! Custom Resources
     // ! ======================================================================
 
-    const setupDatabaseCr = new CustomResource(
-      this,
-      "SetupDatabaseCr",
-      {
-        serviceToken: nebulaSetupDatabaseFunction.functionArn,
-        removalPolicy: RemovalPolicy.RETAIN,
-      }
-    );
-
-    setupDatabaseCr.node.addDependency(nebulaDbInstance);
+    const setupDatabaseCr = new CustomResource(this, "SetupDatabaseCr", {
+      serviceToken: setupDbFunction.functionArn,
+      removalPolicy: RemovalPolicy.RETAIN,
+    });
 
     const sampleDataCr = new CustomResource(this, "SampleDataCr", {
       serviceToken: sampleDataFunction.functionArn,
@@ -1293,6 +1391,24 @@ export class NebulaStack extends Stack {
         },
       ],
     });
+    // ! ======================================================================
+    // ! Dependencies
+    // ! Static dependency mapping
+    // ! ======================================================================
+
+    nebulaDbCluster.node.addDependency(nebulaDbSubnetGroup);
+    nebulaDbInstance.node.addDependency(nebulaDbCluster);
+
+    const sampleDataDepends = new DependencyGroup();
+    sampleDataDepends.add(nebulaDbInstance);
+    sampleDataDepends.add(docsBucket);
+    sampleDataDepends.add(objectCreatedRule);
+    sampleDataDepends.add(stateMachine);
+    sampleDataCr.node.addDependency(sampleDataDepends);
+
+    copySiteCr.node.addDependency(webBucket);
+
+    setupDatabaseCr.node.addDependency(nebulaDbInstance);
 
     // ! ======================================================================
     // ! Conditions

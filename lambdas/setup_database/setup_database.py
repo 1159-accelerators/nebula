@@ -11,8 +11,11 @@ logger = Logger()
 SECRET_ARN = os.environ["SECRET_ARN"]
 CLUSTER_ARN = os.environ["CLUSTER_ARN"]
 DATABASE = os.environ["DATABASE"]
+DISTANCE_FUNCTION = os.environ.get("DISTANCE_FUNCTION", "Cosine")
+VECTOR_SIZE = os.environ.get("VECTOR_SIZE", "1024")
 
-client: RDSDataServiceClient = boto3.client("rds-data") # type: ignore
+client: RDSDataServiceClient = boto3.client("rds-data")  # type: ignore
+
 
 def execute_sql(sql: str) -> None:
     """Execute a SQL statement using the RDS Data API."""
@@ -27,12 +30,14 @@ def execute_sql(sql: str) -> None:
         logger.error(f"Failed to execute SQL: {sql}")
         raise e
 
+
 def create_extensions() -> None:
     """Create necessary database extensions."""
     extensions = ["vector", "uuid-ossp"]
     for ext in extensions:
         logger.info(f"Creating {ext} extension")
         execute_sql(f'CREATE EXTENSION IF NOT EXISTS "{ext}"')
+
 
 def create_documents_table() -> None:
     """Create the documents table."""
@@ -55,23 +60,29 @@ def create_documents_table() -> None:
     """
     execute_sql(sql)
 
+
 def create_embeddings_table() -> None:
     """Create the documents_embeddings table and its index."""
     logger.info("Creating embeddings table")
-    sql = """
+    sql = f"""
     CREATE TABLE IF NOT EXISTS documents_embeddings (
       id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
       document_id UUID REFERENCES documents(id) ON DELETE CASCADE,
-      embedding VECTOR(1024) NOT NULL,
+      embedding VECTOR({VECTOR_SIZE}) NOT NULL,
       text TEXT NOT NULL
     )
     """
     execute_sql(sql)
 
     logger.info("Creating vector index")
-    sql = """
+
+    distance_index = (
+        "vector_l2_ops" if DISTANCE_FUNCTION == "L2" else "vector_cosine_ops"
+    )
+
+    sql = f"""
     CREATE INDEX IF NOT EXISTS documents_embeddings_embedding_idx 
-    ON documents_embeddings USING hnsw (embedding vector_cosine_ops) 
+    ON documents_embeddings USING hnsw (embedding {distance_index}) 
     WITH (ef_construction=256)
     """
     execute_sql(sql)
@@ -83,11 +94,13 @@ def create_embeddings_table() -> None:
     """
     execute_sql(sql)
 
+
 def setup_database() -> None:
     """Set up the database by creating extensions and tables."""
     create_extensions()
     create_documents_table()
     create_embeddings_table()
+
 
 @logger.inject_lambda_context(log_event=True)
 def lambda_handler(event: dict[str, Any], context: LambdaContext) -> None:

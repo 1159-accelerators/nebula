@@ -78,11 +78,13 @@ export const handler = async (event: CloudFormationEvent, context: Context) => {
         Key: "config.json",
         Body: JSON.stringify({
           baseUrl: process.env.API_URL,
+          region: process.env.REGION,
           cognitoOptions: {
             Auth: {
               Cognito: {
                 userPoolId: process.env.USER_POOL_ID,
                 userPoolClientId: process.env.USER_POOL_CLIENT_ID,
+                identityPoolId: process.env.IDENTITY_POOL_ID,
                 loginWith: {
                   email: true,
                 },
