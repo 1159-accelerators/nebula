@@ -10,7 +10,7 @@
   >
     <div
       class="bg-white q-pa-md"
-      :style="{ width: $q.screen.gt.md ? '80vw' : undefined }"
+      :style="{ width: $q.screen.gt.md ? '50vw' : undefined }"
     >
       <q-spinner
         color="secondary"
@@ -41,10 +41,10 @@
           />
         </q-toolbar>
         <q-separator />
-        <div class="row q-pa-md q-col-gutter-md">
+        <div class="row q-pa-md q-col-gutter-md full-height">
           <div class="col-12 col-lg-6">
             <q-img
-              :src="`https://d2z3ryzikmrs9q.cloudfront.net/thumbnails/${$route.params.id}.png`"
+              :src="`https://d2s7juqjnj3wz6.cloudfront.net/thumbnails/${$route.params.id}.png`"
             >
             </q-img>
           </div>

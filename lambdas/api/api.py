@@ -19,13 +19,14 @@ logger = Logger()
 bedrock_client: BedrockRuntimeClient = boto3.client("bedrock-runtime")  # type: ignore
 rds_client: RDSDataServiceClient = boto3.client("rds-data")  # type: ignore
 
-cluster_arn = os.environ["CLUSTER_ARN"]
-embedding_model_id = os.environ["EMBEDDING_MODEL_ID"]
-secret_arn = os.environ["SECRET_ARN"]
+CLUSTER_ARN = os.environ["CLUSTER_ARN"]
+EMBEDDING_MODEL_ID = os.environ["EMBEDDING_MODEL_ID"]
+SECRET_ARN = os.environ["SECRET_ARN"]
+SEARCH_MAX = os.environ.get("SEARCH_MAX", "10")
 
 
 def embed_question(question: str) -> list[float]:
-    bedrock = BedrockEmbeddings(model_id=embedding_model_id, client=bedrock_client)
+    bedrock = BedrockEmbeddings(model_id=EMBEDDING_MODEL_ID, client=bedrock_client)
 
     return bedrock.embed_query(question)
 
@@ -87,8 +88,8 @@ def lambda_handler(event: APIGatewayProxyEvent, context: LambdaContext):
 
         rds_response: ExecuteStatementResponseTypeDef = rds_client.execute_statement(
             database="nebula",
-            resourceArn=cluster_arn,
-            secretArn=secret_arn,
+            resourceArn=CLUSTER_ARN,
+            secretArn=SECRET_ARN,
             sql=f"SELECT id, region, bucket, key, name, size, created_at, summary FROM documents WHERE id = '{id}'",
         )
 
@@ -116,8 +117,8 @@ def lambda_handler(event: APIGatewayProxyEvent, context: LambdaContext):
 
             rds_response = rds_client.execute_statement(
                 database="nebula",
-                secretArn=secret_arn,
-                resourceArn=cluster_arn,
+                secretArn=SECRET_ARN,
+                resourceArn=CLUSTER_ARN,
                 sql=(
                     f"""
                      SELECT d.id as id, key, name, de.text, de.distance
@@ -133,7 +134,7 @@ def lambda_handler(event: APIGatewayProxyEvent, context: LambdaContext):
                      ON (d.id = de.document_id)
                      WHERE de.rank = 1 AND de.distance < 0.88
                      ORDER BY de.distance
-                     LIMIT 10
+                     LIMIT {SEARCH_MAX}
                      """
                 ),
             )

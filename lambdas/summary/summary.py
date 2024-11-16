@@ -7,13 +7,15 @@ from aws_lambda_powertools.utilities.typing import LambdaContext
 from mypy_boto3_bedrock_runtime.client import BedrockRuntimeClient
 from mypy_boto3_s3.client import S3Client
 from mypy_boto3_s3.type_defs import GetObjectOutputTypeDef
-from mypy_boto3_textract.client import TextractClient
+
+# from mypy_boto3_textract.client import TextractClient
 from mypy_boto3_rds_data.client import RDSDataServiceClient
-from mypy_boto3_textract.type_defs import GetDocumentTextDetectionResponseTypeDef
-from trp.trp2 import TDocument, TDocumentSchema, TextractBlockTypes
-from trp import Document
-from trp.t_pipeline import order_blocks_by_geo
-from textractcaller import get_full_json
+
+# from mypy_boto3_textract.type_defs import GetDocumentTextDetectionResponseTypeDef
+# from trp.trp2 import TDocument, TDocumentSchema, TextractBlockTypes
+# from trp import Document
+# from trp.t_pipeline import order_blocks_by_geo
+# from textractcaller import get_full_json
 from typing import Any
 
 logger = Logger()
@@ -21,13 +23,14 @@ logger = Logger()
 s3_client: S3Client = boto3.client("s3")  # type: ignore
 bedrock_client: BedrockRuntimeClient = boto3.client("bedrock-runtime")  # type: ignore
 rds_client: RDSDataServiceClient = boto3.client("rds-data")  # type: ignore
-textract_client: TextractClient = boto3.client("textract")  # type: ignore
+# textract_client: TextractClient = boto3.client("textract")  # type: ignore
 
 MAX_IMAGE_TOKENS = 2048
 MAX_TEXT_TOKENS = 8192
 MODEL_ID = os.environ["MODEL_ID"]
 IMAGE_TYPES = ["gif", "jpg", "jpeg", "png", "webp"]
 SUMMARY_TYPES = ["gif", "jpg", "jpeg", "png", "webp", "pdf"]
+UTILITY_BUCKET = os.environ["UTILITY_BUCKET"]
 
 
 def get_image_data(bucket: str, key: str) -> str:
@@ -40,19 +43,30 @@ def get_image_data(bucket: str, key: str) -> str:
         raise
 
 
-def get_textract_data(job_id: str, textract_client: TextractClient) -> dict:
-    response = get_full_json(job_id=job_id, boto3_textract_client=textract_client)
+def get_extracted_text(id: str) -> str:
+    try:
+        doc: GetObjectOutputTypeDef = s3_client.get_object(
+            Bucket=UTILITY_BUCKET, Key=f"pdf_output/{id}"
+        )
+        return doc["Body"].read().decode("utf-8")
+    except Exception as e:
+        logger.error(f"Could not retrieve text from Utility bucket: {e}")
+        raise
 
-    return response
+
+# def get_textract_data(job_id: str, textract_client: TextractClient) -> dict:
+#     response = get_full_json(job_id=job_id, boto3_textract_client=textract_client)
+
+#     return response
 
 
-def parse_textract_data(textract_data) -> str:
-    doc = TDocumentSchema().load(textract_data)
+# def parse_textract_data(textract_data) -> str:
+#     doc = TDocumentSchema().load(textract_data)
 
-    ordered_lines = order_blocks_by_geo(doc).get_blocks_by_type(block_type_enum=TextractBlockTypes.LINE)  # type: ignore
-    text = TDocument.get_text_for_tblocks(ordered_lines)
+#     ordered_lines = order_blocks_by_geo(doc).get_blocks_by_type(block_type_enum=TextractBlockTypes.LINE)  # type: ignore
+#     text = TDocument.get_text_for_tblocks(ordered_lines)
 
-    return text
+#     return text
 
 
 def create_bedrock_image_request(image_data, mime, prompt) -> dict[str, Any]:
@@ -126,11 +140,14 @@ def process_image(bucket: str, key: str, mime: str) -> str:
     return invoke_bedrock_model(request_body)
 
 
-def process_pdf(job_id: str, textract_client: TextractClient) -> str:
-    textract_data = get_textract_data(job_id, textract_client)
-    parsed_data = parse_textract_data(textract_data)
-    request_body = create_bedrock_text_request(parsed_data)
-    return invoke_bedrock_model(request_body)
+def process_pdf(id: str) -> str:
+    extracted_text = get_extracted_text(id=id)
+
+    if extracted_text != "":
+        request_body = create_bedrock_text_request(extracted_text)
+        return invoke_bedrock_model(request_body)
+    else:
+        return "Summary could not be created because there was no text extracted from the PDF"
 
 
 def put_summary(id: str, summary: str):
@@ -143,34 +160,26 @@ def put_summary(id: str, summary: str):
 
 
 @logger.inject_lambda_context(log_event=True)
-def lambda_handler(
-    event: dict[str, Any], context: LambdaContext
-) -> str | None:
-    try:
-        bucket: str = event["doc"]["bucket"]
-        key: str = event["doc"]["key"]
-        mime: str = event["fileType"]["mime"]
-        ext: str = event["fileType"]["ext"]
-        job_id: str = event.get("textract", {}).get("jobId", "")
-        id: str = event["dbRecord"]["id"]["StringValue"]
-    except KeyError as e:
-        logger.error(f"Invalid event structure: {e}")
-        raise ValueError(f"Missing required field in event: {e}")
+def lambda_handler(event: dict[str, Any], context: LambdaContext) -> dict[str, Any]:
+    bucket: str = event["doc"]["bucket"]
+    key: str = event["doc"]["key"]
+    mime: str = event["fileType"]["mime"]
+    ext: str = event["fileType"]["ext"]
+    id: str = event["dbRecord"]["id"]["StringValue"]
 
     if ext not in SUMMARY_TYPES:
         logger.info(f"Unsupported file extension: {ext}")
-        return ""
+        return {"status": "FAILED", "message": "Unsupported file extension"}
 
     try:
         if ext in IMAGE_TYPES:
-            summary = process_image(bucket, key, mime)
+            summary = process_image(bucket=bucket, key=key, mime=mime)
         else:
-            summary = process_pdf(job_id, textract_client)
+            summary = process_pdf(id=id)
 
-        logger.info(summary)
         put_summary(id=id, summary=summary)
 
-        return "SUCCESS"
+        return {"status": "SUCCESS"}
     except Exception as e:
         logger.error(f"Error processing file: {e}")
-        return "FAILED"
+        return {"status": "FAILED", "message": str(e)}

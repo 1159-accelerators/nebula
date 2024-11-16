@@ -3,19 +3,20 @@ from aws_lambda_powertools.utilities.typing import LambdaContext
 from mypy_boto3_rds_data.client import RDSDataServiceClient
 from mypy_boto3_rds_data.type_defs import ExecuteStatementResponseTypeDef
 from mypy_boto3_s3.client import S3Client
-from mypy_boto3_textract.client import TextractClient
-from mypy_boto3_stepfunctions.client import SFNClient
 from typing import Any
+from pypdfium2 import PdfDocument, PdfTextPage
 import boto3
 import json
 import os
 
 logger = Logger()
 
-#rds_client: RDSDataServiceClient = boto3.client("rds-data")  # type: ignore
+# rds_client: RDSDataServiceClient = boto3.client("rds-data")  # type: ignore
 s3_client: S3Client = boto3.client("s3")  # type: ignore
-#sfn_client: SFNClient = boto3.client("stepfunctions")  # type: ignore
-#textract_client: TextractClient = boto3.client("textract")  # type: ignore
+# sfn_client: SFNClient = boto3.client("stepfunctions")  # type: ignore
+# textract_client: TextractClient = boto3.client("textract")  # type: ignore
+
+UTILITY_BUCKET = os.environ["UTILITY_BUCKET"]
 
 
 # def save_extract_token(id: str, token: str, cluster_arn: str, secret_arn: str) -> None:
@@ -93,6 +94,7 @@ s3_client: S3Client = boto3.client("s3")  # type: ignore
 #             taskToken=token, cause=json.dumps("Textract job failed")
 #         )
 
+
 def get_s3_object(bucket: str, key: str) -> bytes:
     try:
         doc = s3_client.get_object(Bucket=bucket, Key=key)
@@ -102,17 +104,39 @@ def get_s3_object(bucket: str, key: str) -> bytes:
         raise e
 
 
+def extract_text(doc_data: bytes):
+    logger.info("Extracting text from PDF")
+    pdf = PdfDocument(doc_data)
+    doc_text: str = ""
+
+    for page in pdf:
+        textpage: PdfTextPage = page.get_textpage()
+        doc_text += textpage.get_text_bounded()
+
+    return doc_text
+
+
+def save_extracted_text(doc_text: str, id: str):
+    logger.info("Putting extracted text to Utility bucket")
+    try:
+        bytes = doc_text.encode()
+        s3_client.put_object(Body=bytes, Bucket=UTILITY_BUCKET, Key=f"pdf_output/{id}")
+    except Exception as e:
+        logger.error(f"Could not save thumbnail to S3: {e}")
+        raise e
+
+    return None
+
+
 @logger.inject_lambda_context(log_event=True)
-def lambda_handler(event: dict[str, Any], context: LambdaContext) -> None:
-    #cluster_arn = os.environ["CLUSTER_ARN"]
-    #secret_arn = os.environ["SECRET_ARN"]
-    #role_arn = os.environ["ROLE_ARN"]
-    #topic_arn = os.environ["TOPIC_ARN"]
-    utility_bucket = os.environ["UTILITY_BUCKET"]
+def lambda_handler(event: dict[str, Any], context: LambdaContext) -> dict[str, Any]:
+    # cluster_arn = os.environ["CLUSTER_ARN"]
+    # secret_arn = os.environ["SECRET_ARN"]
+    # role_arn = os.environ["ROLE_ARN"]
+    # topic_arn = os.environ["TOPIC_ARN"]
     bucket = event["doc"]["bucket"]
     key = event["doc"]["key"]
     id = event["dbRecord"]["id"]["StringValue"]
-    ext = event["fileType"]["ext"]
 
     try:
         # if "taskToken" in event:
@@ -121,6 +145,10 @@ def lambda_handler(event: dict[str, Any], context: LambdaContext) -> None:
         #     )
         # elif "Records" in event:
         #     handle_sns_event(event, cluster_arn, secret_arn)
+        doc_data = get_s3_object(bucket=bucket, key=key)
+        doc_text = extract_text(doc_data=doc_data)
+        save_extracted_text(doc_text=doc_text, id=id)
+        return {"status": "SUCCESS"}
     except Exception as e:
         logger.error(f"Error processing event: {e}")
-        raise
+        return {"status": "FAILED", "message": str(e)}

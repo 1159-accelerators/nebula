@@ -93,83 +93,57 @@ export class NebulaStack extends Stack {
       }
     );
 
-    const distanceParam = new CfnParameter(
-      this,
-      "DistanceParam",
-      {
-        type: "String",
-        default: "Cosine",
-        description: "Distance function for nearest neighbor. (Cannot be changed later)",
-        allowedValues: [
-          "Cosine",
-          "L2",
-        ],
-      }
-    );
+    const distanceParam = new CfnParameter(this, "DistanceParam", {
+      type: "String",
+      default: "Cosine",
+      description:
+        "Distance function for nearest neighbor. (Cannot be changed later)",
+      allowedValues: ["Cosine", "L2"],
+    });
 
-    const distanceMaxParam = new CfnParameter(
-      this,
-      "DistanceMaxParam",
-      {
-        type: "Number",
-        default: 0.90,
-        description: "Maximum distance allowed for search results. (Min: 0.5, Max: 2.0)",
-        maxValue: 2.0,
-        minValue: 0.5
-      }
-    );
+    const distanceMaxParam = new CfnParameter(this, "DistanceMaxParam", {
+      type: "Number",
+      default: 0.9,
+      description:
+        "Maximum distance allowed for search results. (Min: 0.5, Max: 2.0)",
+      maxValue: 2.0,
+      minValue: 0.5,
+    });
 
-    const searchMaxParam = new CfnParameter(
-      this,
-      "SearchMaxParam",
-      {
-        type: "Number",
-        default: 10,
-        description: "Maximum number of results returned from similarity search. (Min: 5, Max: 20)",
-        maxValue: 20,
-        minValue: 5
-      }
-    );
+    const searchMaxParam = new CfnParameter(this, "SearchMaxParam", {
+      type: "Number",
+      default: 10,
+      description:
+        "Maximum number of results returned from similarity search. (Min: 5, Max: 20)",
+      maxValue: 20,
+      minValue: 5,
+    });
 
-    const chunkParam = new CfnParameter(
-      this,
-      "ChunkParam",
-      {
-        type: "Number",
-        default: 1000,
-        description: "Maxiumum number of characters that a chunk can contain. (Min: 100, Max: 2000)",
-        maxValue: 2000,
-        minValue: 100
-      }
-    );
+    const chunkParam = new CfnParameter(this, "ChunkParam", {
+      type: "Number",
+      default: 1000,
+      description:
+        "Maxiumum number of characters that a chunk can contain. (Min: 100, Max: 2000)",
+      maxValue: 2000,
+      minValue: 100,
+    });
 
-    const chunkOverlapParam = new CfnParameter(
-      this,
-      "ChunkOverlapParam",
-      {
-        type: "Number",
-        default: 20,
-        description: "Chunk overlap when recursively splitting text. (Min: 0, Max: 50)",
-        maxValue: 50,
-        minValue: 0
-      }
-    );
+    const chunkOverlapParam = new CfnParameter(this, "ChunkOverlapParam", {
+      type: "Number",
+      default: 20,
+      description:
+        "Chunk overlap when recursively splitting text. (Min: 0, Max: 50)",
+      maxValue: 50,
+      minValue: 0,
+    });
 
-    const vectorParam = new CfnParameter(
-      this,
-      "VectorParam",
-      {
-        type: "String",
-        default: "1024",
-        description: "Must be set to 1,536 for Titan V1. For V2, the value should be 256, 512, or 1,024. (Cannot be changed later)",
-        allowedValues: [
-          "256",
-          "512",
-          "1024",
-          "1536",
-        ],
-      }
-    );
+    const vectorParam = new CfnParameter(this, "VectorParam", {
+      type: "String",
+      default: "1024",
+      description:
+        "Must be set to 1,536 for Titan V1. For V2, the value should be 256, 512, or 1,024. (Cannot be changed later)",
+      allowedValues: ["256", "512", "1024", "1536"],
+    });
 
     const uploadParam = new CfnParameter(this, "UploadParam", {
       type: "String",
@@ -244,7 +218,7 @@ export class NebulaStack extends Stack {
               searchMaxParam.logicalId,
               chunkParam.logicalId,
               chunkOverlapParam.logicalId,
-              vectorParam.logicalId
+              vectorParam.logicalId,
             ],
           },
         ],
@@ -335,10 +309,10 @@ export class NebulaStack extends Stack {
             allowedHeaders: ["*"],
             allowedMethods: ["GET", "HEAD"],
             maxAge: 300,
-            allowedOrigins: ["*"]
-          }
-        ]
-      }
+            allowedOrigins: ["*"],
+          },
+        ],
+      },
     });
 
     docsBucket.cfnOptions.deletionPolicy = CfnDeletionPolicy.RETAIN;
@@ -383,16 +357,6 @@ export class NebulaStack extends Stack {
     };
 
     const webBucket = new s3.Bucket(this, "Web", {
-      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-      autoDeleteObjects: false,
-      encryption: s3.BucketEncryption.S3_MANAGED,
-      enforceSSL: true,
-      versioned: false,
-      removalPolicy: RemovalPolicy.RETAIN,
-      cors: [corsRule],
-    });
-
-    const thumbnailBucket = new s3.Bucket(this, "Thumbnail", {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       autoDeleteObjects: false,
       encryption: s3.BucketEncryption.S3_MANAGED,
@@ -710,7 +674,6 @@ export class NebulaStack extends Stack {
             actions: ["s3:PutObject", "s3:DeleteObject"],
             resources: [
               `${webBucket.bucketArn}/*`,
-              `${thumbnailBucket.bucketArn}/*`,
               `${utilityBucket.bucketArn}/*`,
               `${docsBucket.attrArn}/*`,
             ],
@@ -762,32 +725,29 @@ export class NebulaStack extends Stack {
         CLUSTER_ARN: nebulaDbCluster.attrDbClusterArn,
         SECRET_ARN: nebulaDbCluster.attrMasterUserSecretSecretArn,
         POWERTOOLS_LOGGER_LOG_EVENT: "true",
+        SEARCH_MAX: searchMaxParam.valueAsString
       },
       timeout: Duration.seconds(120),
     });
 
-    const setupDbFunction = new lambda.Function(
-      this,
-      "SetupDbFunction",
-      {
-        runtime: lambda.Runtime.PYTHON_3_12,
-        code: lambda.Code.fromBucket(
-          publicBucket,
-          `nebula/${process.env.npm_package_version}/lambdas/setup_database.zip`
-        ),
-        handler: "setup_database.lambda_handler",
-        functionName: "NebulaSetupDbFunction",
-        role: lambdaRole,
-        environment: {
-          DATABASE: "nebula",
-          SECRET_ARN: nebulaDbCluster.attrMasterUserSecretSecretArn,
-          CLUSTER_ARN: nebulaDbCluster.attrDbClusterArn,
-          DISTANCE_FUNCTION: distanceParam.valueAsString,
-          VECTOR_SIZE: vectorParam.valueAsString
-        },
-        timeout: Duration.seconds(300),
-      }
-    );
+    const setupDbFunction = new lambda.Function(this, "SetupDbFunction", {
+      runtime: lambda.Runtime.PYTHON_3_12,
+      code: lambda.Code.fromBucket(
+        publicBucket,
+        `nebula/${process.env.npm_package_version}/lambdas/setup_database.zip`
+      ),
+      handler: "setup_database.lambda_handler",
+      functionName: "NebulaSetupDbFunction",
+      role: lambdaRole,
+      environment: {
+        DATABASE: "nebula",
+        SECRET_ARN: nebulaDbCluster.attrMasterUserSecretSecretArn,
+        CLUSTER_ARN: nebulaDbCluster.attrDbClusterArn,
+        DISTANCE_FUNCTION: distanceParam.valueAsString,
+        VECTOR_SIZE: vectorParam.valueAsString,
+      },
+      timeout: Duration.seconds(300),
+    });
 
     const sampleDataFunction = new lambda.Function(this, "SampleDataFunction", {
       runtime: lambda.Runtime.NODEJS_20_X,
@@ -832,6 +792,7 @@ export class NebulaStack extends Stack {
         MODEL_ID: summarizationModelParam.valueAsString,
         CLUSTER_ARN: nebulaDbCluster.attrDbClusterArn,
         SECRET_ARN: nebulaDbCluster.attrMasterUserSecretSecretArn,
+        UTILITY_BUCKET: utilityBucket.bucketName,
       },
     });
 
@@ -848,6 +809,9 @@ export class NebulaStack extends Stack {
         MODEL_ID: embeddingModelParam.valueAsString,
         CLUSTER_ARN: nebulaDbCluster.attrDbClusterArn,
         SECRET_ARN: nebulaDbCluster.attrMasterUserSecretSecretArn,
+        CHUNK_SIZE: chunkParam.valueAsString,
+        CHUNK_OVERLAP: chunkOverlapParam.valueAsString,
+        UTILITY_BUCKET: utilityBucket.bucketName
       },
       timeout: Duration.seconds(900),
       memorySize: 512,
@@ -939,8 +903,8 @@ export class NebulaStack extends Stack {
     const apiDoc = apiDocs.addResource("{id}");
     apiDoc.addMethod("GET");
 
-    const apiSearch = api.root.addResource("search")
-    apiSearch.addMethod("GET")
+    const apiSearch = api.root.addResource("search");
+    apiSearch.addMethod("GET");
 
     apiAuthorizer._attachToApi(api);
 
@@ -990,7 +954,7 @@ export class NebulaStack extends Stack {
         SOURCE_BUCKET: publicBucket.bucketName,
         USER_EMAIL: userEmailParam.valueAsString,
         TOPIC_ARN: `arn:aws:sns:${Aws.REGION}:844603932797:1159-accelerators-topic`,
-        REGION: `${Aws.REGION}`
+        REGION: `${Aws.REGION}`,
       },
       timeout: Duration.seconds(120),
     });
@@ -1155,31 +1119,39 @@ export class NebulaStack extends Stack {
                     Variable: "$.fileType.ext",
                     StringMatches: "webp",
                   },
-                  {
-                    Variable: "$.fileType.ext",
-                    StringMatches: "pdf",
-                  },
                 ],
-                Comment: "PDFs or Images",
+                Comment: "Images",
                 Next: "Thumbnail",
+              },
+              {
+                Variable: "$.fileType.ext",
+                StringMatches: "pdf",
+                Comment: "PDF",
+                Next: "Extract",
               },
             ],
             Default: "Success",
             Type: "Choice",
           },
           Thumbnail: {
-            Type: "Task",
-            Resource: "arn:aws:states:::lambda:invoke",
+            Next: "Summary",
             Parameters: {
-              FunctionName: thumbnailFunction.functionArn,
+              FunctionName:
+                thumbnailFunction.functionArn,
               Payload: {
                 "doc.$": "$.doc",
-                "id.$": "$.dbRecord.id.StringValue",
                 "fileType.$": "$.fileType",
+                "id.$": "$.dbRecord.id.StringValue",
               },
+            },
+            Resource: "arn:aws:states:::lambda:invoke",
+            ResultPath: "$.thumbnail",
+            ResultSelector: {
+              "status.$": "$.Payload.status",
             },
             Retry: [
               {
+                BackoffRate: 2,
                 ErrorEquals: [
                   "Lambda.ServiceException",
                   "Lambda.AWSLambdaException",
@@ -1188,40 +1160,15 @@ export class NebulaStack extends Stack {
                 ],
                 IntervalSeconds: 1,
                 MaxAttempts: 3,
-                BackoffRate: 2,
               },
             ],
-            ResultSelector: {
-              "status.$": "$.Payload.status",
-            },
-            ResultPath: "$.thumbnail",
-            Next: "Process PDF?",
-          },
-          "Process PDF?": {
-            Type: "Choice",
-            Choices: [
-              {
-                Not: {
-                  Variable: "$.fileType.ext",
-                  StringMatches: "pdf",
-                },
-                Next: "Summary",
-                Comment: "NO",
-              },
-            ],
-            Default: "Extract Text",
-          },
-          "Extract Text": {
             Type: "Task",
-            Resource: "arn:aws:states:::lambda:invoke.waitForTaskToken",
-            ResultPath: "$.textract",
+          },
+          Extract: {
+            Type: "Task",
+            Resource: "arn:aws:states:::lambda:invoke",
             Parameters: {
-              Payload: {
-                "taskToken.$": "$$.Task.Token",
-                "doc.$": "$.doc",
-                "fileType.$": "$.fileType",
-                "id.$": "$.dbRecord.id.StringValue",
-              },
+              "Payload.$": "$",
               FunctionName: extractFunction.functionArn,
             },
             Retry: [
@@ -1235,9 +1182,14 @@ export class NebulaStack extends Stack {
                 IntervalSeconds: 1,
                 MaxAttempts: 3,
                 BackoffRate: 2,
+                JitterStrategy: "FULL",
               },
             ],
-            Next: "Summary",
+            Next: "Thumbnail",
+            ResultPath: "$.extract",
+            ResultSelector: {
+              "status.$": "$.Payload.status",
+            },
           },
           "Filter Event Data": {
             Comment: "Removes all but the region, bucket, and key",

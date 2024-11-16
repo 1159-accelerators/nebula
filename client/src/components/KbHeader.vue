@@ -17,6 +17,15 @@
         @click="$router.push({ name: 'index' })"
         class="q-mr-md"
       />
+      <q-btn
+        dense
+        flat
+        round
+        size="lg"
+        icon="las la-file-upload"
+        @click="filePickerRef?.pickFiles()"
+        class="q-mr-md"
+      />
       <q-form @submit="getSearchResults" class="col-2">
         <q-input
           outlined
@@ -59,18 +68,29 @@
         @click="logoff"
       />
     </q-toolbar>
+    <q-file
+      ref="filePickerRef"
+      multiple
+      v-model="files"
+      style="display: none"
+    />
   </q-header>
 </template>
 <script setup lang="ts">
+import { ref } from 'vue';
 import { signOut } from 'aws-amplify/auth';
 import { useMessageStore } from 'src/stores/message-store';
 import { useDocStore } from 'src/stores/doc-store';
 import { useUiStore } from 'src/stores/ui-store';
 import { useRouter } from 'vue-router';
+import { QFile } from 'quasar';
 
 const docStore = useDocStore();
 const uiStore = useUiStore();
 const messageStore = useMessageStore();
+
+const files = ref<File[]>([]);
+const filePickerRef = ref<QFile>();
 
 const router = useRouter();
 

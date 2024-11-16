@@ -11,7 +11,13 @@
       <div v-else class="row justify-center">
         <div class="col-12 col-md-6">
           <div class="q-pb-md">
-            <router-link :to="{name: 'index'}" class="search-back-link"><q-icon name="las la-angle-left" size="md" color="secondary"/>Back to Documents</router-link>
+            <router-link :to="{ name: 'index' }" class="search-back-link"
+              ><q-icon
+                name="las la-angle-left"
+                size="md"
+                color="secondary"
+              />Back to Documents</router-link
+            >
           </div>
           <q-separator />
           <div
@@ -43,11 +49,18 @@
 </template>
 
 <script setup lang="ts">
+import { onUnmounted } from 'vue';
 import { useDocStore } from 'src/stores/doc-store';
 
 const docStore = useDocStore();
 
 defineOptions({
   name: 'DocPage',
+});
+
+onUnmounted(() => {
+  docStore.searchResults = [];
+  docStore.search = '';
+  docStore.searchLoading = true;
 });
 </script>

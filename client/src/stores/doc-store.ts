@@ -1,15 +1,13 @@
 import { defineStore } from 'pinia';
-import { useUiStore } from './ui-store';
 import { api } from 'boot/axios';
 import { fetchAuthSession } from '@aws-amplify/auth';
-
-const uiStore = useUiStore();
 
 export const useDocStore = defineStore('doc', {
   state: () => ({
     docs: [] as Document[],
     search: '',
     searchResults: [] as SearchResult[],
+    docsLoading: true,
     searchLoading: true,
   }),
   // getters: {
@@ -17,7 +15,7 @@ export const useDocStore = defineStore('doc', {
   // },
   actions: {
     async listDocs() {
-      uiStore.waiting = true;
+      this.docsLoading = true;
 
       try {
         const session = await fetchAuthSession();
@@ -30,7 +28,7 @@ export const useDocStore = defineStore('doc', {
       } catch (err) {
         console.log(err);
       }
-      uiStore.waiting = false;
+      this.docsLoading = false;
     },
     async getSearchResults() {
       this.searchLoading = true;
